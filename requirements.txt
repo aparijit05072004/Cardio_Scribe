@@ -1,0 +1,25 @@
+# CardioScribe v2 — Python 3.11, CUDA 12.x, one 24 GB GPU
+# Install PyTorch first for your CUDA build: https://pytorch.org/get-started/locally/
+
+# --- core DL ---------------------------------------------------
+torch>=2.2
+transformers>=4.44
+peft>=0.11
+accelerate>=0.33
+bitsandbytes>=0.43        # 4-bit NF4 quantization + paged 8-bit AdamW (CUDA only)
+sentencepiece>=0.2        # MarianMT (Helsinki-NLP/opus-mt-de-en) tokenizer
+
+# --- signal + data ---------------------------------------------
+wfdb>=4.1                 # PTB-XL WFDB record I/O
+scipy>=1.11               # sosfiltfilt band-pass, resample_poly
+neurokit2>=0.2.7          # R-peak detection; DWT wave delineation for PR/QRS/QT (section 46)
+numpy>=1.26
+pandas>=2.1
+scikit-learn>=1.4
+
+# --- plotting ---------------------------------------------------
+matplotlib>=3.8
+seaborn>=0.13
+
+# --- optional ---------------------------------------------------
+PyWavelets>=1.5           # only for the Symlet-8 preprocessing ablation (section 33)

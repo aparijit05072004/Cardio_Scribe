@@ -1,0 +1,77 @@
+{
+  "_provenance": {
+    "source": "CardioScribe_v2.ipynb, section 29 (results summary) and sections 26-35",
+    "split": "PTB-XL 1.0.3, strat_fold 10 (human-validated test fold)",
+    "note": "Transcribed verbatim from the executed notebook's printed summary. Stage-2 instruction tuning ran as a 10-step smoke test (SMOKE_TEST=True), so every generation-side metric reflects an essentially untrained LLM.",
+    "stage2_smoke_test": true,
+    "stage2_optimizer_steps": 10,
+    "superseded_by": "The v2.1 patch (notebook sections 42-45 plus a rewritten 19h) addresses the three failed targets below, but has NOT been run. These remain the only measured numbers. Section 45 overwrites this file once the re-run completes. See docs/RUN_PLAN.md."
+  },
+  "encoder_test_macro_auroc": 0.9168635612737421,
+  "encoder_resnet1d_test_macro_auroc": 0.9307,
+  "qformer_stage1_test_auroc": 0.8920027713169402,
+  "mlp_ablation_test_auroc": 0.917068344464133,
+  "retrieval_R@1": 0.0018198362147406734,
+  "finding_micro_f1": 0.6428571428571429,
+  "finding_macro_f1": 0.2096642128580324,
+  "finding_micro_precision": 0.640,
+  "finding_micro_recall": 0.646,
+  "hallucination_rate": 0.3604060913705584,
+  "hr_agreement": null,
+  "hr_stated_in_reports": "0/100",
+  "wrong_label_corroboration": 0.8,
+  "flagged_for_review": "10/100",
+  "bleu4": 0.07028002632802643,
+  "rouge_l": 0.2978927507920294,
+  "n_eval_reports": 100,
+  "llm": "Qwen/Qwen2.5-1.5B-Instruct",
+  "calibration": {
+    "ece_before": 0.0818,
+    "ece_after": 0.0221,
+    "per_class_temperature": {"NORM": 0.785, "MI": 0.662, "STTC": 0.758, "CD": 0.550, "HYP": 0.412}
+  },
+  "selective_prediction": {
+    "target_risk": 0.10,
+    "calibrated_threshold": 0.852,
+    "coverage_at_target_risk": 0.484,
+    "realised_risk": 0.100,
+    "full_coverage_risk": 0.228
+  },
+  "stage1_per_class_auroc": {"NORM": 0.9458, "MI": 0.9225, "STTC": 0.9293, "CD": 0.9039, "HYP": 0.8883},
+  "stage1_measured_number_mae": {"heart_rate_bpm": 9.12, "rr_mean_ms": 93.07, "rr_std_ms": 48.57},
+  "bridge_ablation": {
+    "MLP":      {"macro_auroc": 0.9171, "R@1": 0.014, "R@5": 0.050, "hr_mae": 10.13},
+    "QFormer":  {"macro_auroc": 0.8920, "R@1": 0.002, "R@5": 0.016, "hr_mae": 13.96}
+  },
+  "ddp_ablation": {
+    "no_ddp":    {"f1": 0.594, "hallucination": 0.388, "flagged": 0.35},
+    "noisy_ddp": {"f1": 0.610, "hallucination": 0.367, "flagged": 0.12},
+    "clean_ddp": {"f1": 0.618, "hallucination": 0.362, "flagged": 0.15},
+    "wrong_ddp": {"f1": 0.435, "hallucination": 0.539, "flagged": 0.65, "corroboration": 0.775}
+  },
+  "robustness_auroc_delta_from_clean": {
+    "clean_baseline": 0.8898,
+    "gaussian_snr_20db": -0.0017,
+    "gaussian_snr_10db": 0.0009,
+    "gaussian_snr_5db": -0.0040,
+    "mains_50hz_0.05mV": -0.0005,
+    "mains_50hz_0.2mV": -0.0015,
+    "baseline_wander_0.1": -0.0009,
+    "baseline_wander_0.5": -0.0018,
+    "leads_off_1": -0.0102,
+    "leads_off_3": -0.0358,
+    "gain_mismatch_0.5x": -0.0237,
+    "gain_mismatch_2.0x": -0.0360
+  },
+  "blueprint_targets": {
+    "encoder_macro_auroc_ge_0.90": {"value": 0.9168635612737421, "status": "PASS"},
+    "hallucination_rate_lt_0.05": {"value": 0.3604060913705584, "status": "FAIL"},
+    "hr_agreement_ge_0.95": {"value": null, "status": "FAIL", "reason": "heart rate stated in 0/100 generated reports"},
+    "finding_f1_beats_resnet_mlp_baseline": {"value": 0.6428571428571429, "status": "NOT MET"}
+  },
+  "not_run": [
+    "preprocessing ablation (filter band / Symlet-8) - RUN_PREPROCESSING_ABLATIONS=False",
+    "external validation on a never-seen dataset - harness implemented in section 41, deliberately unrun",
+    "clinician gold-set evaluation - human_review_sheet.csv is the intake format"
+  ]
+}

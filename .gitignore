@@ -1,0 +1,53 @@
+# ---------------------------------------------------------------
+# Data — never commit PTB-XL. Download it from PhysioNet instead:
+# https://physionet.org/content/ptb-xl/1.0.3/
+# ---------------------------------------------------------------
+ptb-xl-data/
+ptb-xl-data.zip
+ptb-xl*.zip
+records100/
+records500/
+*.dat
+*.hea
+ptbxl_database.csv
+scp_statements.csv
+ptbxl_curated.csv
+instruction_pairs.jsonl
+
+# ---------------------------------------------------------------
+# Model weights, caches and run artifacts
+# ---------------------------------------------------------------
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.npy
+*.npz
+cardioscribe_lora/
+cardioscribe_cache/
+human_review_sheet.csv
+robustness.csv
+wandb/
+mlruns/
+
+# ---------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+
+# ---------------------------------------------------------------
+# Editors / OS / scratch
+# ---------------------------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.bak
+*.tmp
+*.log

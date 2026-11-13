@@ -26,12 +26,13 @@
 12. [Phase 8 — Evaluation](#phase-8--evaluation)
 13. [Phase 9 — Robustness, calibration, ablations](#phase-9--robustness-calibration-ablations)
 14. [Phase 10 — Grounding, explainability, deployment](#phase-10--grounding-explainability-deployment)
-15. [Part VI — Target closure (§42–45, v2.1)](#part-vi--target-closure-4245-v21)
-16. [Part VII — The honest next steps (§46–51, v2.2)](#part-vii--the-honest-next-steps-4651-v22)
-17. [Artifacts produced](#17-artifacts-produced)
-18. [Reproduction](#18-reproduction)
-19. [Known limitations and next steps](#19-known-limitations-and-next-steps)
-20. [Glossary](#20-glossary)
+15. [The application layer — `app/`](#the-application-layer--app)
+16. [Part VI — Target closure (§42–45, v2.1)](#part-vi--target-closure-4245-v21)
+17. [Part VII — The honest next steps (§46–51, v2.2)](#part-vii--the-honest-next-steps-4651-v22)
+18. [Artifacts produced](#18-artifacts-produced)
+19. [Reproduction](#19-reproduction)
+20. [Known limitations and next steps](#20-known-limitations-and-next-steps)
+21. [Glossary](#21-glossary)
 
 ---
 
@@ -629,6 +630,75 @@ The harness is complete. Point it at Chapman-Shaoxing or CPSC2018 with superclas
 
 ---
 
+## The application layer — `app/`
+
+**Code:** [`app/`](../app/) · **Reference:** [app/README.md](../app/README.md) · **Blueprint:** Phase 8's *demo*
+
+§39 ends at a Python callable. `app/` is the surface around it: upload a 12-lead WFDB
+record in a browser, watch it process, read the audited report. One process serves both
+the JSON API and the UI — no Node, no build step, no CDN, and no third-party JavaScript at
+all, since the 12-lead strip is drawn on a raw 2D canvas. That is what "local inference
+only, nothing leaves the machine" actually requires.
+
+### What the pipeline forces on the design
+
+| Constraint | Consequence |
+|:--|:--|
+| `wfdb.rdsamp()` reads the `.dat` **through** the `.hea` | A `.dat` alone cannot be read, so the pair is matched by filename stem in the browser *and* again server-side, with Phase-1 QC rails (500 Hz, 12 leads, NaN, flat, ±4 mV clipping). 2D ECG images are rejected outright — an explicit non-goal |
+| ~3.8 s of LLM decode (measured: 377 s / 100 reports) **plus a backward pass** for `lead_saliency`, over a 4-bit model already holding ~6 GB | Two concurrent requests is how a 16 GB card OOMs. Upload returns a `job_id` immediately and exactly **one job touches the device at a time**, with a visible queue position and seven stages streamed over SSE. Never a blocking POST |
+| `cardioscribe()` returns **twelve structured fields** | The UI renders them natively — interactive waveform with attention shading, calibrated probabilities against the 0.852 threshold, deterministic measurements and §46 intervals, per-lead saliency, retrieved precedent, guardrail verdict — rather than burying them in a PNG |
+| Clinician-in-the-loop is mandatory | A persistent non-clinical-use banner, the `flagged_for_review` state shown prominently with its exact `issues[]`, and a review form that appends to `human_review_sheet.csv` — the same intake §50 scores the gold set from |
+
+### Two modes, because the weights are not here
+
+The trained checkpoints are not in this repository and cannot be (`.gitignore` excludes
+`*.pt`, `*.npz`, `cardioscribe_lora/`), and precedent retrieval additionally needs the
+PTB-XL training metadata with its cached text embeddings. **A fresh clone cannot run
+`cardioscribe()` at all.**
+
+| | **DEMO** (default) | **LIVE** (`CARDIOSCRIBE_RUNTIME_DIR`) |
+|:--|:--|:--|
+| Band-pass, R-peaks, HR, RR | really computed | really computed |
+| Report, probabilities, attention, saliency, precedent | **withheld** | from the model |
+| Report panel states | "placeholder, not model output" | the generated draft |
+
+Both modes return the same schema, so the UI never branches except to show provenance.
+Every response carries a `provenance` block naming what is model output and what is not.
+**Demo mode never fabricates a clinical report** — a demo emitting plausible clinical prose
+unlabelled is exactly the failure the [model card](MODEL_CARD.md) forbids.
+
+### Layout and contract
+
+```
+app/backend/   config · schemas (the contract) · wfdb_io · runtime_demo
+               runtime_live (adapter + --self-check) · jobs (GPU lock) · app (FastAPI)
+app/web/       index.html · app.js · styles.css   — zero dependencies
+app/gradio_app.py          Python-native alternative, same backend
+app/tools/     export_runtime.py · make_sample_record.py
+```
+
+`POST /api/analyze` → `{job_id}` · `GET /api/jobs/{id}/stream` (SSE) · `GET /api/jobs/{id}`
+· `POST /api/review` · `GET /api/health`. Interactive docs at `/docs`.
+
+`cardioscribe()` closes over roughly forty module-level objects, so it cannot be lifted out
+on its own: `tools/export_runtime.py` turns the notebook's pipeline cells (1–41 plus 46–47)
+into an importable `cardioscribe_runtime.py`, and
+`python -m backend.runtime_live --self-check` validates that export **without running
+inference**.
+
+### Verification status
+
+Verified on a machine with no GPU and no weights: upload validation, the queue under four
+concurrent submits, SSE streaming, review CSV round-trip, static serving, and the full UI
+rendered in Chromium in both modes with no console errors. The live adapter was exercised
+against a stub runtime mirroring the notebook's exact contracts, which confirmed the
+sex-specific QTc bound (450 / 460 ms) flows from the UI through to `interval_flags`.
+
+**LIVE against real weights is not verified** — that needs a GPU, the checkpoints and
+PTB-XL. The self-check is how that gap closes on a machine that has them.
+
+---
+
 ## Part VI — Target closure (§42–45, v2.1)
 
 **Notebook:** sections 42–45 · **Blueprint:** §1 targets, §8 evaluation
@@ -791,7 +861,7 @@ When it does run, compare the SSL-then-supervised encoder against the supervised
 
 ---
 
-## 17. Artifacts produced
+## 18. Artifacts produced
 
 Written to `$CARDIOSCRIBE_WORK` (git-ignored — see [`.gitignore`](../.gitignore)):
 
@@ -818,7 +888,7 @@ Written to `$CARDIOSCRIBE_WORK` (git-ignored — see [`.gitignore`](../.gitignor
 
 ---
 
-## 18. Reproduction
+## 19. Reproduction
 
 ### Run order
 
@@ -877,7 +947,7 @@ Splits are deterministic (PTB-XL's `strat_fold`). Standardization statistics are
 
 ---
 
-## 19. Known limitations and next steps
+## 20. Known limitations and next steps
 
 Status as of v2.2. "Unrun" below always means *the code exists and was not executed*, never *estimated*.
 
@@ -927,7 +997,7 @@ Status as of v2.2. "Unrun" below always means *the code exists and was not execu
 
 ---
 
-## 20. Glossary
+## 21. Glossary
 
 | Term | Meaning |
 |:--|:--|
@@ -944,6 +1014,7 @@ Status as of v2.2. "Unrun" below always means *the code exists and was not execu
 | **Macro-AUROC** | Area under the ROC curve, averaged equally over classes |
 | **Risk–coverage** | The trade-off between how many cases a model answers and how often it is wrong on those it answers |
 | **Hallucination rate** | The share of reported findings unsupported by the reference or the signal |
+| **Demo mode** | The application layer's default: the signal path really runs, everything requiring trained weights is withheld rather than invented, and the `provenance` block says which is which |
 | **Evidence channel** | The kind of signal evidence a finding may rest on in §42's gate: `class` (calibrated superclass probability), `meas` (R-peak measurement), `iv` (§46 interval measurement). A finding with no channel can never be signal-supported |
 | **Signal-supported** | A finding at least one evidence channel will stand behind for a given record. The gate reads the signal only — never the reference — so the hallucination metric is not measuring the gate against itself |
 | **Unverifiable vs refuted** | A record §46 has not measured leaves an `iv` finding *unverifiable* — unchecked, restorable with `CARDIOSCRIBE_GATE_UNGROUNDABLE=keep`. A record measured and found normal *refutes* the finding, and `keep` does not resurrect it |

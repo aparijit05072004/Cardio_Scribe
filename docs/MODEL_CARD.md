@@ -48,6 +48,10 @@
   → structured report, or flagged for human review
 ```
 
+Served locally by [`app/`](../app/README.md): a WFDB upload goes in, one job at a time
+reaches the GPU, and the structured report comes back with its evidence, its guardrail
+verdict and a clinician review form. Bound to loopback; no outbound calls.
+
 A side branch runs R-peak detection (`neurokit2`, lead II) for heart rate and RR variability. These are the **measured numbers** the generated text is checked against.
 
 **Decoder used in the committed run:** `Qwen/Qwen2.5-1.5B-Instruct` (ungated, fits a smaller GPU). Any 7–8B instruct model — Llama-3/3.1-8B-Instruct or Qwen-class — drops in via the `LLM_NAME` constant; the soft-token head re-fits itself to the loaded model's hidden size.
@@ -61,6 +65,7 @@ A side branch runs R-peak detection (`neurokit2`, lead II) for heart rate and RR
 * **Research and education** on ECG-to-text generation, multimodal bridging, and clinical hallucination control.
 * **Clinician-in-the-loop decision support** in a research setting, with **mandatory human review of every output**.
 * A **reproducible baseline** for the ablations it ships: encoder arm, bridge type, prompt grounding, preprocessing.
+* **Collecting clinician readings** through the local app, which appends each one to `human_review_sheet.csv` — the intake §50 scores the gold set from.
 
 ### ❌ Explicitly out of scope
 
@@ -183,6 +188,8 @@ The band-pass absorbs mains hum and wander as designed. The real exposures are *
 | **Interval evidence channel** *(v2.3, not yet run)* | §42 (`iv`) | Feeds §46's QTc and frontal axis into the gate, so `left_axis_deviation`, `right_axis_deviation` and `qt_prolongation` are no longer struck for want of evidence — three of the five findings v2.1 could not ground. Thresholds come from §46's own `interval_flags`, so the gate and the §47 validator that checks the same numbers cannot drift apart. Direction is respected: a right-deviated axis does not ground a *left* axis claim, and an extreme axis grounds neither. Only `low_voltage` (needs an amplitude criterion) and `pacemaker` (needs a spike detector) still have no channel. |
 | **Wrong-label stress test** | §27, §34 | Quantifies corroboration of false evidence, rather than assuming grounding helps. |
 | **Mandatory human review** | throughout | Failing or low-confidence outputs are flagged, never silently returned. |
+| **Serving surface** | [`app/`](../app/README.md) | A persistent non-clinical-use banner on every screen; `flagged_for_review` shown prominently with its exact `issues[]`; the drafted report presented as editable text for sign-off, never as a finished document. Loopback-bound, no CDN, no third-party JavaScript, and uploads are deleted the moment inference ends. |
+| **Provenance in every response** | [`app/`](../app/README.md) | The app ships a demo mode so the interface is reviewable without weights. It computes the signal path for real and **withholds** model-dependent output rather than inventing it, with a `provenance` block naming which is which — a demo emitting plausible clinical prose unlabelled would be a fabricated clinical record. |
 | **Grounding and explainability** | §36–38 | Cross-attention over the timeline, per-lead saliency, and retrieved precedent reports make each claim auditable. |
 
 ---
@@ -192,6 +199,7 @@ The band-pass absorbs mains hum and wander as designed. The real exposures are *
 * **PTB-XL is open-access and de-identified**, distributed by PhysioNet under CC-BY 4.0. It is **not redistributed** in this repository.
 * **All inference is local.** No signal or report text is sent to an external API — including during translation, which runs MarianMT locally. This is required practice if MIMIC-IV-ECG is ever added, as its DUA forbids sending data to external LLM APIs.
 * **No patient data is committed.** `.gitignore` excludes the dataset, all checkpoints and all caches.
+* **The app keeps nothing.** Uploads are written to a temporary directory and deleted as soon as inference finishes; the server binds to `127.0.0.1` by default and fetches no remote asset, so no waveform reaches a network.
 * **Clinical overreach is the main ethical risk**, and is addressed by labelling this a research tool with mandatory human review, by abstention rather than forced answers, and by stating every unmeasured dimension on this card.
 * **Fairness is unmeasured.** No subgroup analysis has been performed; absence of evidence of bias is not evidence of absence.
 * **If used with hospital data**, ethics/IRB approval, consent status, and de-identification of headers and report text (names, IDs, dates) are prerequisites, not options.

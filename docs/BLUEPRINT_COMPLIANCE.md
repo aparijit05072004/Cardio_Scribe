@@ -148,7 +148,8 @@ must populate `INTERVALS` before §43 is re-scored. See **[RUN_PLAN.md](RUN_PLAN
 | 21 | Prompt with top-k diagnoses and probabilities, measured numbers and soft tokens; instruct the model to flag disagreement and write "uncertain" below threshold | §19e, §21 | ✅ | Threshold later replaced by the calibrated 0.852 |
 | 22 | A validator checks numbers against measurements and negations against the classifier; failures flagged for human review | §22, §42, §42b, §47 | ✅ | ±10 bpm tolerance; 7 negator forms; 10/100 flagged. v2.1 adds the repair the check implies: strike clauses the signal will not support, write in the measured rate, hedge below the calibrated threshold — every edit recorded in `actions`, so the delta between the model's text and the shipped text is never silent |
 | **Phase 8 — Evaluation and demo** |
-| — | See §5 below | §23–§41 | 🟡 | |
+| — | Evaluation: see §5 below | §23–§41 | 🟡 | |
+| — | **Demo**: a runnable surface over §39's one-call API | [`app/`](../app/README.md) | ✅ | Upload a WFDB pair, single-GPU queue, staged progress, the structured report with its evidence and guardrail verdict. Runs without weights in demo mode, which withholds model-dependent output rather than inventing it |
 
 ---
 
@@ -161,7 +162,7 @@ must populate `INTERVALS` before §43 is re-scored. See **[RUN_PLAN.md](RUN_PLAN
 | **Hallucination** | Share of unsupported findings; wrong-label stress test | §26, §27 | ✅ 0.360 and 0.800 |
 | **Numbers** | HR, PR, QRS, QTc in text vs measured | §22, §26 → §42, §46–48 | 🟡 v2.0 checked HR only, and HR was stated in 0/100 reports. v2.2 §46 measures PR, QRS, QT, QTc and axis **from the waveform** (PTB-XL+ is a cross-check in §48, not a prerequisite) and §47 validates all of them; v2.1 §9a puts a bpm value in every gold `rate` field. Unrun |
 | **Text metrics** | BLEU, ROUGE, BERTScore as secondary | §24 | ✅ BLEU-4 and ROUGE-L; BERTScore skipped (extra dependency, secondary) |
-| **Human review** | Cardiologist Likert rating of 100–200 reports | §29, §50 | 🟡 `human_review_sheet.csv` exported in v2.0. v2.2 §50 adds the full gold-set protocol: blank per-reader intake sheets, Cohen's κ **before** adjudication, unresolved disagreements left unresolved, and scoring against the adjudicated reading. No readings — this is the step code cannot take |
+| **Human review** | Cardiologist Likert rating of 100–200 reports | §29, §50, [`app/`](../app/README.md) | 🟡 `human_review_sheet.csv` exported in v2.0, and the web app now captures readings straight into it — a clinician edits the draft and scores accuracy / completeness / safety in the browser. v2.2 §50 adds the full gold-set protocol: blank per-reader intake sheets, Cohen's κ **before** adjudication, unresolved disagreements left unresolved, and scoring against the adjudicated reading. No readings — this is the step code cannot take |
 | **Robustness** | Added noise, lead-off, different devices and sites | §30 | ✅ 11 conditions |
 
 ### The four required ablations
@@ -175,7 +176,7 @@ must populate `INTERVALS` before §43 is re-scored. See **[RUN_PLAN.md](RUN_PLAN
 
 ### Beyond the blueprint
 
-Two additions the blueprint does not ask for, included because the guardrails are unsound without them:
+Additions the blueprint does not ask for, included because the guardrails are unsound without them — plus the surface that makes the whole thing usable:
 
 | | Why |
 |:--|:--|
@@ -183,6 +184,7 @@ Two additions the blueprint does not ask for, included because the guardrails ar
 | **§32 Risk–coverage selective prediction** | `UNCERTAIN_THRESHOLD = 0.35` was a guess. The curve sets it at **0.852** for ≤ 10 % risk at 48.4 % coverage. |
 | **§42 Evidence gate with three channels** *(v2.1 + v2.3)* | Blueprint step 22 specifies a validator that *checks and flags*. The gate adds the repair the check implies, and grounds each claim in a named channel — classifier, R-peak measurement, or §46 interval — reading the signal only, never the reference. |
 | **§42 Derived sex encoding** *(v2.3)* | The QTc bound is sex-specific and PTB-XL's `sex` labels contradicted each other, so the mapping is inferred from anthropometrics with explicit guards rather than assumed. The blueprint does not mention this; getting it wrong would have mis-set a clinical threshold on every record. |
+| **[`app/`](../app/README.md) — the application layer** | The blueprint asks for a demo but says nothing about how to serve one. Three things the pipeline forces: uploads must carry the `.hea`+`.dat` pair, one job may touch the GPU at a time (LLM decode plus a backward pass for saliency over a 4-bit model), and the result is twelve structured fields, not a blob. It also ships a **demo mode** so the UI is reviewable without weights, which withholds model output rather than fabricating it. |
 
 Also beyond scope-of-ask: §36 cross-attention grounding, §37 per-lead saliency, §38 retrieval-based precedent, §39 one-call API, §40 report card.
 
@@ -241,7 +243,7 @@ Also beyond scope-of-ask: §36 cross-attention grounding, §37 per-lead saliency
 | 5 — Stage 1, Q-Former | 17–18 | ✅ executed; interval regression extendable via §46 |
 | 6 — Stage 2, instruction tuning | 19–20 | 🟡 hyperparameters match; budget-capped at the smoke-test setting. §19h rewritten for a real schedule — **unrun** |
 | 7 — Inference and guardrails | 21–22 | ✅ executed; v2.1 §42b adds repair to the check, v2.2 §47 extends it to every number — **unrun** |
-| 8 — Evaluation and demo | §8 | 🟡 clinical metrics, stress test, robustness, calibration and 3 of 4 ablations executed |
+| 8 — Evaluation and demo | §8 | 🟡 evaluation: clinical metrics, stress test, robustness, calibration and 3 of 4 ablations executed. ✅ demo: [`app/`](../app/README.md) wraps §39 as a local web service |
 
 ### By target
 

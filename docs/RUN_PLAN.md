@@ -300,6 +300,28 @@ not fire as expected and is worth understanding.
 
 ---
 
+## 4c. Looking at the output
+
+Once the re-run produces a checkpoint, [`app/`](../app/README.md) is the quickest way to
+inspect it on real records — export the runtime, point the server at it, and upload a WFDB
+pair:
+
+```bash
+python app/tools/export_runtime.py --out ./runtime
+CARDIOSCRIBE_RUNTIME_DIR=./runtime PYTHONPATH=app \
+  python -m backend.runtime_live --self-check          # symbols only, no inference
+CARDIOSCRIBE_RUNTIME_DIR=./runtime \
+  python -m uvicorn backend.app:app --app-dir app
+```
+
+It shows the generated report beside its evidence — calibrated probabilities against the
+0.852 threshold, the deterministic measurements, §46 intervals, saliency, retrieved
+precedent and the guardrail verdict with its exact `issues[]` — which is faster than
+re-reading §29's CSV, and it captures clinician scores into `human_review_sheet.csv` as
+you go.
+
+---
+
 ## 5. Flags
 
 | Variable | Default | Effect |

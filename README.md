@@ -485,7 +485,12 @@ process, get the audited report**. One process, no Node, no build step, no CDN.
 ```bash
 pip install -r app/requirements-app.txt
 python -m uvicorn backend.app:app --app-dir app --host 127.0.0.1 --port 8000
+
+# no ECG ships with this repo, so make one to try it with:
+python app/tools/make_sample_record.py --out /tmp/demo_ecg --hr 72
 ```
+
+Open <http://127.0.0.1:8000> and drop `/tmp/demo_ecg.hea` **and** `.dat` in together.
 
 | | |
 |:--|:--|

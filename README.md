@@ -27,7 +27,8 @@
 | [⚡ TL;DR](#-tldr) | [🧠 Architecture](#-architecture) | [🖼️ Gallery](#️-gallery) |
 | [📊 Results](#-results) | [🔬 Ablations](#-ablations--what-the-evidence-says) | [🧭 Honest status](#-honest-status--what-is-not-done) |
 | [🔧 v2.1 — closing the targets](#-v21--closing-the-targets) | [🧪 v2.2 — the honest next steps](#-v22--the-honest-next-steps-as-far-as-software-goes) | [🔒 v2.3 — the gate's evidence channel](#-v23--the-gates-evidence-channel) |
-| [🚀 Quickstart](#-quickstart) | [🗂️ Repository map](#️-repository-map) | [📚 Documentation](#-documentation) |
+| [🖥️ Web app](#️-web-app) | [🚀 Quickstart](#-quickstart) | [🗂️ Repository map](#️-repository-map) |
+| [📚 Documentation](#-documentation) | [🧾 Citation](#-citation--acknowledgements) | |
 
 > **Where the project stands.** v2.0 ran end to end and produced every number on this page.
 > v2.1 (§42–45), v2.2 (§46–51) and v2.3 (the gate's `iv` channel) are **written and not yet
@@ -476,6 +477,34 @@ height/weight disagreement and unexpected codes.
 
 ---
 
+## 🖥️ Web app
+
+`app/` is a local web interface for the pipeline: **upload a 12-lead WFDB record, watch it
+process, get the audited report**. One process, no Node, no build step, no CDN.
+
+```bash
+pip install -r app/requirements-app.txt
+python -m uvicorn backend.app:app --app-dir app --host 127.0.0.1 --port 8000
+```
+
+| | |
+|:--|:--|
+| **Upload** | `.hea` + `.dat` matched by stem, in the browser and again server-side. QC rails for 500 Hz, 12 leads, NaN, flat and clipped leads. 2D ECG images rejected outright |
+| **Processing** | Upload returns a `job_id` immediately; exactly **one job touches the GPU at a time**, with a live queue position and 7 pipeline stages streamed over SSE |
+| **Report** | Interactive 12-lead canvas with Q-Former attention shading, calibrated probabilities against the 0.852 abstention threshold, deterministic measurements and §46 intervals, per-lead saliency, retrieved precedent, guardrail verdict |
+| **Review** | A clinician edits the draft and scores accuracy / completeness / safety; it appends to `human_review_sheet.csv` — the same intake §50 scores the gold set from |
+
+> **It runs without weights.** The checkpoints are not in this repository and cannot be,
+> so the app ships a **demo mode** that really computes the signal path — band-pass,
+> R-peaks, heart rate, RR variability — and **withholds** everything that needs the trained
+> model rather than inventing it. Point `CARDIOSCRIBE_RUNTIME_DIR` at an exported runtime
+> for the real pipeline.
+
+A single-file [Gradio alternative](app/gradio_app.py) shares the same backend. Full
+details, API reference and configuration: **[app/README.md](app/README.md)**.
+
+---
+
 ## 🚀 Quickstart
 
 ### 1. Get the data
@@ -582,6 +611,11 @@ CardioScribe-v2/
 │                                  #   v2.3     §42    evidence gate: iv channel
 │                                  #                   + sex encoding        (written; logic tested)
 ├── README.md                      # you are here
+├── app/                           # local web app: upload → process → audited report
+│   ├── backend/                   #   FastAPI, single-GPU queue, demo + live runtimes
+│   ├── web/                       #   no-build SPA, zero JS dependencies
+│   ├── gradio_app.py              #   Python-native alternative, same backend
+│   └── tools/                     #   runtime exporter, sample-record generator
 ├── requirements.txt               # pinned-by-floor dependency set
 ├── LICENSE                        # MIT (code only — data and models carry their own)
 ├── .gitignore                     # keeps PTB-XL, checkpoints and caches out of git
@@ -608,6 +642,7 @@ CardioScribe-v2/
 | 🏷️ [**Model card**](docs/MODEL_CARD.md) | Intended use, out-of-scope use, limitations, safety mechanisms, privacy |
 | ✅ [**Blueprint compliance matrix**](docs/BLUEPRINT_COMPLIANCE.md) | Blueprint step → notebook section → status, all 22 numbered steps |
 | 📋 [**Run plan**](docs/RUN_PLAN.md) | What the v2.1 patch changed, what to re-run, and which targets will and will not pass |
+| 🖥️ [**Web app**](app/README.md) | Running it, the two modes, API reference, configuration |
 | 🖼️ [**Figure index**](outputs/figures/README.md) | Captions and provenance for all 8 figures |
 
 ---

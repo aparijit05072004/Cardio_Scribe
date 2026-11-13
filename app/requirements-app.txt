@@ -1,0 +1,19 @@
+# CardioScribe v2 — web application layer
+# These are the ONLY dependencies needed to run the app in DEMO mode.
+# LIVE mode additionally needs the model stack from ../requirements.txt
+# (torch, transformers, peft, bitsandbytes) plus trained checkpoints.
+
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9   # multipart/form-data uploads
+pydantic>=2.6
+wfdb>=4.1                 # WFDB .hea/.dat reading — same reader the notebook uses
+numpy>=1.26
+scipy>=1.11               # 0.5-40 Hz sosfiltfilt, identical to notebook section 4a
+
+# Optional. If present, DEMO mode uses the same R-peak detector as the notebook
+# instead of its own simpler one; the API reports which was used.
+# neurokit2>=0.2.7
+
+# Optional. Only for the Gradio single-file UI (app/gradio_app.py).
+# gradio>=5.0

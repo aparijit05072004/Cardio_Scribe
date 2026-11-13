@@ -27,6 +27,12 @@ cardioscribe_lora/
 cardioscribe_cache/
 human_review_sheet.csv
 robustness.csv
+gold_intake_blank.csv
+gold_readings*.csv
+gold_adjudicated*.csv
+stage2_history.json
+hr_by_ecg_id.npz
+intervals_cache.npz
 wandb/
 mlruns/
 

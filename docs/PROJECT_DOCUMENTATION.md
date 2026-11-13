@@ -28,10 +28,10 @@
 14. [Phase 10 — Grounding, explainability, deployment](#phase-10--grounding-explainability-deployment)
 15. [Part VI — Target closure (§42–45, v2.1)](#part-vi--target-closure-4245-v21)
 16. [Part VII — The honest next steps (§46–51, v2.2)](#part-vii--the-honest-next-steps-4651-v22)
-17. [Artifacts produced](#15-artifacts-produced)
-18. [Reproduction](#16-reproduction)
-19. [Known limitations and next steps](#17-known-limitations-and-next-steps)
-20. [Glossary](#18-glossary)
+17. [Artifacts produced](#17-artifacts-produced)
+18. [Reproduction](#18-reproduction)
+19. [Known limitations and next steps](#19-known-limitations-and-next-steps)
+20. [Glossary](#20-glossary)
 
 ---
 
@@ -115,6 +115,7 @@ flowchart TD
         B --> C["Dataset-level per-lead standardization<br/>(fit on folds 1–8 only)"]
         C --> D["Crop / pad to exactly 5000 samples"]
         B --> E["R-peak detection (neurokit2, lead II)<br/>→ heart rate, RR mean, RR std"]
+        B --> Q["Deterministic intervals · §46<br/>PR · QRS · QT · QTc · frontal axis<br/>12-lead vector-magnitude R-peaks"]
     end
     subgraph DL["🧠 DL — representation"]
         D --> F["ECG encoder (frozen after Stage 0)<br/>wav2vec2-style conv front end + transformer, D=768<br/>ResNet1D D=512 as the baseline arm"]
@@ -130,9 +131,12 @@ flowchart TD
         E --> L
         J --> L
         L --> M["LLM 4-bit NF4 + LoRA<br/>r=16 α=32 dropout 0.05"]
-        M --> N{"Validator"}
-        N -->|pass| O["Structured report"]
-        N -->|fail| P["Flagged for human review"]
+        M --> N{"Evidence gate + validator<br/>channels: class · meas · iv<br/>signal only, never the reference"}
+        Q --> N
+        E --> N
+        K --> N
+        N -->|pass / repaired| O["Structured report"]
+        N -->|fail or low confidence| P["Flagged for human review"]
     end
     style SIG fill:#f8f9fa,stroke:#adb5bd,color:#000
     style DL fill:#eef5fd,stroke:#2471a3,color:#000
@@ -152,7 +156,8 @@ flowchart TD
 | **LLM** | 4-bit NF4 via bitsandbytes. This run: `Qwen/Qwen2.5-1.5B-Instruct`. Any 7–8B instruct model (Llama-3/3.1, Qwen-class) drops in via `LLM_NAME` |
 | **LoRA** | r=16, α=32, dropout 0.05, on `q/k/v/o` and `gate/up/down` projections |
 | **Prompt** | System text + measured values + top-k diagnoses with calibrated probabilities + 32 soft tokens |
-| **Validator** | Numbers in text vs measurements (±10 bpm tolerance); negation/assertion contradictions vs the classifier; confidence vs the calibrated threshold |
+| **Validator** | Numbers in text vs measurements (HR ±10 bpm; PR ±20, QRS ±15, QT/QTc ±25 ms, axis ±15° via §47); negation/assertion contradictions vs the classifier; confidence vs the calibrated threshold |
+| **Evidence gate** *(§42)* | Three channels decide what a claim may rest on: `class` (a calibrated superclass probability over a fold-9-fitted threshold), `meas` (an R-peak measurement), `iv` (a §46 interval measurement — QTc, frontal axis). Signal only; the reference is never read |
 
 ---
 
@@ -343,7 +348,7 @@ Because the encoder is frozen, its output is computed **once** and cached to a m
 | ECG→report retrieval | R@1 0.016 · R@5 0.064 · R@10 0.102 |
 | Measured-number MAE | HR 9.12 bpm · RR mean 93.1 ms · RR std 48.6 ms |
 
-> **Why no PR / QRS / QTc / axis regression?** Those intervals come from PTB-XL+ (the 12SL feature release), which is not in this snapshot. `REG_FIELDS` is the extension point — add the columns and the head, the validator, and the prompt all widen automatically.
+> **Why does the regression head cover only HR and RR?** Because v2.0 believed PR, QRS, QT/QTc and axis required PTB-XL+. **That belief was wrong** — see [Part VII §46](#part-vii--the-honest-next-steps-4651-v22), which derives all of them from the waveform and verifies them against synthetic beats. `REG_FIELDS` is the extension point: add the columns produced by §46 and the head, the validator (§47) and the prompt all widen automatically. PTB-XL+ remains useful as a vendor cross-check (§48), not as a prerequisite.
 
 **Artifacts:** `qformer_stage1_best.pt`, `measured_numbers.npz`
 
@@ -443,7 +448,9 @@ A failing output is **flagged for human review**, never silently returned. In th
 > 2. **Write in the measured rate.** Inserted if absent, corrected if the model invented one. The repaired line states the **number only** — not "(bradycardia)" — because the qualifier is a phrase `extract_findings` scores, and writing it would manufacture a false positive on every brady- or tachycardic record whose terse reference happens not to mention the rate.
 > 3. **Hedge below threshold**, and rebuild an impression if the gate emptied it.
 >
-> **The trade is real and is reported, not buried.** Striking a claim that happened to be correct removes a true positive as well as a false one, so the strict hallucination *ratio* can rise while the false-positive *count* falls — §43 prints tp/fp/fn for exactly that reason. And five findings (axis deviation, low voltage, pacing, ectopy, QT prolongation) have no evidence channel here at all; by default the gate strikes them, costing recall. That is the price of refusing to assert what this pipeline cannot check. `CARDIOSCRIBE_GATE_UNGROUNDABLE=keep` shows the other side of the trade.
+> **The trade is real and is reported, not buried.** Striking a claim that happened to be correct removes a true positive as well as a false one, so the strict hallucination *ratio* can rise while the false-positive *count* falls — §43 prints tp/fp/fn for exactly that reason. By default the gate strikes what no channel supports, costing recall; `CARDIOSCRIBE_GATE_UNGROUNDABLE=keep` shows the other side of the trade.
+
+> 🔒 **v2.3 — a third channel** (§42 `iv`, not yet run). v2.1's gate had two channels, so five findings could never be supported. §46 measures QT/QTc and the frontal axis from the waveform, which grounds three of them — `left_axis_deviation`, `right_axis_deviation` and `qt_prolongation`. Only `low_voltage` (needs an amplitude criterion) and `pacemaker` (needs a spike detector) remain channel-less. The thresholds are §46's own, so the gate and the §47 validator that checks the same numbers cannot drift apart; direction is respected, so a right-deviated axis never grounds a *left* axis claim; and a record §46 has not measured is treated as **unverifiable rather than refuted**. Full detail in [Part VI §42](#part-vi--target-closure-4245-v21).
 
 ---
 
@@ -461,7 +468,7 @@ A failing output is **flagged for human review**, never silently returned. In th
 | **Numbers** | Stated HR vs measured HR, agreement within tolerance |
 | **Text metrics** | BLEU-4 and ROUGE-L, dependency-free implementations, reported as secondary |
 | **Stress test** | §27 — inject a **false** diagnosis at p=0.95 and measure how often the model corroborates it |
-| **Human review** | `human_review_sheet.csv` — the intake format for cardiologist Likert scoring (accuracy, completeness, safety) |
+| **Human review** | `human_review_sheet.csv` — the v2.0 intake format for cardiologist Likert scoring (accuracy, completeness, safety). v2.2 §50 supersedes it with a full gold-set protocol: per-reader blank sheets, κ before adjudication, and scoring against the adjudicated reading |
 
 ### Results (n = 100, fold 10)
 
@@ -642,7 +649,42 @@ A finding is *signal-supported* when a calibrated superclass probability clears 
 
 Per-class temperatures are re-fitted by NLL on fold 9, and each τ is the smallest threshold whose fold-9 precision clears `CARDIOSCRIBE_GATE_PRECISION` (default 0.90). **Fold 10 is never used to fit anything.**
 
-The five findings with no channel are not an oversight — they are neither superclasses nor measured here, and need PTB-XL+ 12SL features. Listing them explicitly is the point: the gate's default is to strike what it cannot check, and that costs recall on exactly these.
+The five findings §42 originally had no channel for were not an oversight — they are neither superclasses nor measured by §12's HR/RR branch. Listing them explicitly was the point: the gate's default is to strike what it cannot check, and that cost recall on exactly these. Three of the five have since been grounded, as the note below records.
+
+> ✅ **Resolved in v2.3 — Part VI and Part VII disagreed, and Part VII was right.** §42 originally said these findings "need PTB-XL+ 12SL features". §46, written later, measures **QT/QTc and the frontal axis from the waveform**, so three of the five — `left_axis_deviation`, `right_axis_deviation` and `qt_prolongation` — are groundable with no new data. §42 now carries a third channel, `iv`, described below. Only **two** findings remain without a channel: `low_voltage` (needs an amplitude criterion) and `pacemaker` (needs a spike detector).
+
+### The `iv` channel (v2.3)
+
+| Rule | Grounded when |
+|:--|:--|
+| `left_axis_deviation` | §46's `axis_label` reads *left axis deviation* (−90° ≤ axis < −30°) |
+| `right_axis_deviation` | §46's `axis_label` reads *right axis deviation* (90° < axis ≤ 180°) |
+| `qt_prolongation` | §46's `interval_flags` raises *qt prolongation* (QTc Bazett > 450 ms) |
+
+Four properties worth stating, because each was a decision:
+
+1. **No thresholds are duplicated.** The facts come from §46's own `interval_flags`, so the gate and the §47 validator that checks the same numbers cannot drift apart.
+2. **Direction is respected.** Grounding "left axis deviation" on a right-deviated axis would license exactly the confident wrong claim the gate exists to stop. An *extreme* axis (beyond −90°) grounds **neither** label — it is abnormal, but it is not the thing either label names.
+3. **Unmeasured ≠ refuted.** `INTERVALS` is built in §47b, *after* §42, so `signal_support` reads it at call time. With no measurement for a record, an `iv` finding is **unverifiable** — struck under the default `drop`, restored under `keep`, exactly as the two channel-less findings are. A record that *was* measured and came out normal is refuted, and `keep` does not resurrect it.
+4. **No regression.** With `INTERVALS` empty the gate behaves precisely as it did before the channel existed, so §43 can be scored before or after §46–47. Scored after, it sees the extra evidence — see [RUN_PLAN](RUN_PLAN.md) for the ordering.
+
+#### The sex encoding, resolved from the data (v2.3)
+
+QTc's upper bound is sex-specific — **450 ms for men, 460 ms for women** — so `qt_prolongation` cannot be grounded correctly without knowing which way PTB-XL's `sex` column runs. It is a bare 0/1, and the two available labels contradicted each other: §1 of this notebook printed *"0=female, 1=male"*, while the PTB-XL documentation has 0=male. Picking the wrong one applies the wrong bound to **every record** — a silent, systematic error in a clinical threshold.
+
+Rather than trust either label, `resolve_sex_encoding()` reads the mapping off the anthropometrics that ship in the same table. Adult males are roughly 13 cm taller and 10 kg heavier than adult females, a separation far beyond sampling noise:
+
+| Guard | Rule |
+|:--|:--|
+| Sample size | ≥ 200 records with a finite value in each group, per column |
+| Margin | height gap ≥ 5 cm, weight gap ≥ 3 kg — smaller gaps are ignored, not used |
+| Agreement | height and weight must point the same way, or the result is `None` |
+| Corroboration | prevalence (PTB-XL is ~52 % male) is printed and warns on disagreement, but **never decides** — it is far too weak a signal on its own |
+| Failure | `None`, and no sex-specific bound is applied anywhere — 450 ms throughout, which is what §47's validator uses, so the two still agree |
+
+`sex_of(split, idx)` maps one record through the resolved code and returns `None` for a missing or unparseable value, so a record with no recorded sex is never given a guessed bound.
+
+On PTB-XL the expected outcome is **0 = male, 1 = female** — the notebook's §1 label was backwards. The raw counts support it (code 0 holds 11,354 records, 52.1 %, against the dataset's documented ~52 % male), but the counts alone are far too close to be decisive, which is exactly why the derivation runs on height and weight and prints its evidence. §1 no longer asserts an encoding at all.
 
 ### §42b — the gate and the repair
 
@@ -749,7 +791,7 @@ When it does run, compare the SSL-then-supervised encoder against the supervised
 
 ---
 
-## 15. Artifacts produced
+## 17. Artifacts produced
 
 Written to `$CARDIOSCRIBE_WORK` (git-ignored — see [`.gitignore`](../.gitignore)):
 
@@ -768,12 +810,15 @@ Written to `$CARDIOSCRIBE_WORK` (git-ignored — see [`.gitignore`](../.gitignor
 | `stage2_state.pt` / `stage2_best.pt` | 6 | Stage-2 resume state and best-val-loss checkpoint *(v2.1)* |
 | `stage2_history.json` | 6 | Validation-loss trace for the Stage-2 run *(v2.1)* |
 | `robustness.csv` | 9 | Perturbation sweep |
-| `human_review_sheet.csv` | 8 | Cardiologist Likert intake sheet, 100 rows |
-| `results_summary.json` | 8 | Machine-readable metrics — a copy is committed at [`results/results_summary.json`](../results/results_summary.json) |
+| `human_review_sheet.csv` | 8 | Cardiologist Likert intake sheet, 100 rows (superseded for finding-level scoring by §50's `gold_intake_blank.csv`) |
+| `results_summary.json` | 8 / §45 | Machine-readable metrics — a copy is committed at [`results/results_summary.json`](../results/results_summary.json). §45 rewrites it from measured values only |
+| `intervals_cache.npz` | §46–47 | Deterministic PR / QRS / QT / QTc / axis per record, plus `rpeak_source` *(v2.2)* |
+| `gold_intake_blank.csv` | §50 | Blank per-reader intake sheet for the clinician gold set — one row per ECG, one column per finding, deliberately **not** pre-filled with the model's output *(v2.2)* |
+| `encoder_ssl_pretrained.pt` | §51 | Self-supervised encoder checkpoint, once MIMIC-IV-ECG access lands *(v2.2, unrun)* |
 
 ---
 
-## 16. Reproduction
+## 18. Reproduction
 
 ### Run order
 
@@ -781,8 +826,24 @@ Written to `$CARDIOSCRIBE_WORK` (git-ignored — see [`.gitignore`](../.gitignor
 Phase 0 (config) → Phases 1–3 (data, text) → Phase 4 (encoder, GATE ≥ 0.90)
 → Phase 5 (Q-Former) → Phase 6 (LoRA) → Phase 7 (guardrails) → Phase 8 (evaluation)
 → Phase 9 (robustness / calibration / ablations) → Phase 10 (grounding, API, report card)
-→ Part VI §42–45 (target closure)
+→ Part VI §42–45 (target closure) → Part VII §46–51 (intervals, validator, external, gold set, SSL)
 ```
+
+Part VII's sections are **independent of each other** and of the Stage-2 re-run. §46–48 need only
+the waveforms, so they run today. §49, §50 and §51 are each gated on something outside the
+notebook (`CARDIOSCRIBE_EXTERNAL`, clinician readings, `CARDIOSCRIBE_MIMIC`) and skip cleanly
+with a printed reason when it is absent.
+
+> ⚠️ **One ordering rule, from v2.3.** The gate's `iv` channel is fed by `INTERVALS`, which §47b
+> builds *after* §42. `signal_support` reads it at call time, so **§42 needs no re-run** — but
+> **§43 does**, because that is where the gate is actually applied:
+>
+> ```
+> §42 → … → §46, §47  (INTERVALS populated)  → RE-RUN §43 → §45
+> ```
+>
+> Scoring §43 without §46–47 stays valid; the three `iv` findings are simply unverifiable, exactly
+> as before v2.3. Nothing silently changes meaning.
 
 Phases are **sequentially dependent** — each consumes the previous one's caches. Run all cells in order.
 
@@ -816,40 +877,57 @@ Splits are deterministic (PTB-XL's `strat_fold`). Standardization statistics are
 
 ---
 
-## 17. Known limitations and next steps
+## 19. Known limitations and next steps
 
-### Limitations
+Status as of v2.2. "Unrun" below always means *the code exists and was not executed*, never *estimated*.
 
-1. **Stage 2 is a 10-step smoke test.** Every generation-side metric is a floor. *The single highest-value fix.*
-2. **Hallucination 0.360** against a < 0.05 target.
-3. **Heart rate is never stated** in the generated text (0/100), so the number check never fires.
-4. **Wrong-label corroboration 0.800** — the DDP backfire, confirmed.
-5. **Preprocessing ablation unrun** — the one blueprint ablation left unsettled.
-6. **Q-Former loses to the MLP** at equal budget.
-7. **Five superclasses only** — the full 71 SCP statements and most specific rhythms are out of scope.
-8. **Numbers are HR and RR only** — PR, QRS, QT/QTc and axis need PTB-XL+.
-9. **No external validation** — every number is PTB-XL fold 10.
-10. **No clinician gold set** — the reference is PTB-XL's own machine-translated report.
-11. **Encoder pretraining is supervised**, not self-supervised on MIMIC-IV-ECG.
-12. **Rule-based finding extraction** handles negation but misses phrasings outside `FINDING_VOCAB`.
-13. **Fairness unmeasured** — no subgroup analysis by age or sex.
+### Measured, and open
+
+| # | Limitation | Detail |
+|:--:|:--|:--|
+| 1 | **Stage 2 is budget-capped at the smoke-test setting** | 10 optimizer steps of 2,411/epoch. Every generation-side metric is a floor. v2.1 rewrote §19h for a schedule that fits real sessions — val-loss checkpointing, wall-clock budget, resume. **The single highest-value fix.** |
+| 2 | **Hallucination 0.360** against a < 0.05 target | Three causes, all addressed and none re-measured: the untrained decoder, a schema placeholder (`"sttc (from SCP label)"`) leaking into gold prose, and a metric scoring only half its own definition (§42–43) |
+| 3 | **Heart rate stated in 0/100 reports** | Root cause was upstream of training — the gold `rate` field held no numbers. Fixed in §9a-pre/§9a; unrun |
+| 4 | **Wrong-label corroboration 0.800** | A deliberately false label at p=0.95 is repeated 8 times in 10; the validator flags 65 % of those |
+| 5 | **Q-Former trails the MLP** at equal budget | On AUROC and retrieval. Neither arm has yet been scored on F1 — §44 builds that comparison |
+| 6 | **Preprocessing ablation unrun** | Flag-gated; a fair comparison retrains the encoder per variant |
+| 7 | **Five superclasses only** | The full 71 SCP statements and most specific rhythms are out of scope for v2 |
+| 8 | **Rule-based finding extraction** | Negation-aware, but misses phrasings outside `FINDING_VOCAB`, which biases both F1 and the hallucination rate |
+| 9 | **Fairness unmeasured** | No subgroup analysis by age or sex |
+| 10 | **Reference text is a translated machine report** | Every finding-level number is agreement with that reference, not with an independent reading |
+
+### Closed in v2.2
+
+| Was | Now |
+|:--|:--|
+| ~~Gate strikes five findings for want of any evidence channel~~ | **Three of the five are now grounded.** v2.3 adds an `iv` channel to §42 fed by §46's QTc and frontal axis, covering `left_axis_deviation`, `right_axis_deviation` and `qt_prolongation`. `low_voltage` and `pacemaker` still have none |
+| ~~Numbers are HR and RR only; PR/QRS/QTc/axis need PTB-XL+~~ | **Wrong, and corrected.** §46 derives PR, QRS, QT, QTc (Bazett and Fridericia) and frontal axis from the waveform, verified against synthetic beats with exact intervals (residual bias PR −1.4 ± 4.5 ms, QRS −6.8 ± 1.6, QT −10.4 ± 0.8, axis −0.1 ± 0.6°, reported rather than calibrated away). §47 validates every one of them; §48 cross-checks against PTB-XL+ vendor values when present |
+| ~~External-validation harness is a stub~~ | §49 completed: reads the dataset's own SNOMED code table (never a hand-copied one), maps names to superclasses with explicit printed rules, runs the deployed preprocessing and encoder. **Still produces no number** — it needs the dataset and a GPU |
+| ~~No gold-set machinery~~ | §50: blank per-reader intake sheets, merge, Cohen's κ **before** adjudication, disagreements left unresolved rather than majority-of-two'd, scoring against the adjudicated reading. **No readings** |
+| ~~No SSL pretraining path~~ | §51: masked-latent InfoNCE objective and MIMIC loader, ready. **No result** — blocked on PhysioNet credentialing |
+
+### Found while verifying v2.2, and worth knowing
+
+* **Single-lead R-peak detection fails under axis deviation.** §5 and §12 detect on lead II alone; at −45° lead II's QRS is small and inverted and the detector locks onto the wrong deflection, corrupting every derived interval — while each lead measured alone is correct. §46 detects on the 12-lead vector magnitude. **The committed `measured_numbers.npz` was computed the old way**, so some HR values are suspect; `rpeak_source` now records the path taken.
+* **Wavelet boundaries over-measure QRS by ~26 ms**, enough to turn a normal 100 ms complex into a false bundle-branch-block flag at the 120 ms threshold. §46 takes peaks from DWT and boundaries from a baseline-threshold walk on a median beat.
 
 ### Next steps, in order of value
 
 | Priority | Step | Unlocks |
 |:--:|:--|:--|
-| 1 | **Run Stage 2 properly** (`CARDIOSCRIBE_SMOKE=0`, 2–3 epochs) | Targets 2, 3 and 4 become measurable for the first time |
-| 2 | Re-run Phases 7–10 against the trained model | Honest hallucination, HR-agreement and corroboration numbers |
-| 3 | `CARDIOSCRIBE_PREPROC_ABLATION=1` | Closes the last blueprint ablation |
-| 4 | Re-run the bridge ablation at a longer schedule | Settles under-trained vs refuted for the Q-Former |
-| 5 | PhysioNet credentialing → MIMIC-IV-ECG | Self-supervised encoder pretraining (blueprint step 15) |
-| 6 | PTB-XL+ | PR / QRS / QTc / axis regression and a complete number validator |
-| 7 | Chapman-Shaoxing / CPSC2018 through §41 | The first external-validation number |
-| 8 | Clinician gold set via `human_review_sheet.csv` | Finding-F1 against a real reading rather than a translated machine report |
+| 1 | **Run Stage 2 properly** (`CARDIOSCRIBE_SMOKE=0`) — see [RUN_PLAN.md](RUN_PLAN.md) | Targets 2, 3 and 4 become measurable for the first time |
+| 2 | Re-run Phase 3 first | The v2.1 gold-target fixes must be in the training data before Stage 2 starts |
+| 3 | Re-run Phases 7–10 and §42–45 against the trained model | Honest hallucination, HR-agreement and corroboration numbers, and a re-scored target table |
+| 4 | Second Stage-2 pass for §44 | The F1 head-to-head blueprint target 2 actually names |
+| 5 | Run §46–48 over the test fold | Replaces the suspect lead-II HR values and populates the complete number validator |
+| 6 | `CARDIOSCRIBE_PREPROC_ABLATION=1` | Closes the last blueprint ablation |
+| 7 | Download Chapman-Shaoxing or CPSC2018 → `CARDIOSCRIBE_EXTERNAL` → §49 | The first external-validation number |
+| 8 | PhysioNet credentialing → `CARDIOSCRIBE_MIMIC` → §51 | Self-supervised encoder pretraining (blueprint step 15) |
+| 9 | Clinician gold set via §50 | Finding-F1 against a real reading — what blueprint target 2 is really asking for |
 
 ---
 
-## 18. Glossary
+## 20. Glossary
 
 | Term | Meaning |
 |:--|:--|
@@ -866,6 +944,9 @@ Splits are deterministic (PTB-XL's `strat_fold`). Standardization statistics are
 | **Macro-AUROC** | Area under the ROC curve, averaged equally over classes |
 | **Risk–coverage** | The trade-off between how many cases a model answers and how often it is wrong on those it answers |
 | **Hallucination rate** | The share of reported findings unsupported by the reference or the signal |
+| **Evidence channel** | The kind of signal evidence a finding may rest on in §42's gate: `class` (calibrated superclass probability), `meas` (R-peak measurement), `iv` (§46 interval measurement). A finding with no channel can never be signal-supported |
+| **Signal-supported** | A finding at least one evidence channel will stand behind for a given record. The gate reads the signal only — never the reference — so the hallucination metric is not measuring the gate against itself |
+| **Unverifiable vs refuted** | A record §46 has not measured leaves an `iv` finding *unverifiable* — unchecked, restorable with `CARDIOSCRIBE_GATE_UNGROUNDABLE=keep`. A record measured and found normal *refutes* the finding, and `keep` does not resurrect it |
 
 ---
 

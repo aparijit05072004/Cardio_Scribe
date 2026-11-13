@@ -26,7 +26,13 @@
 |---|---|---|
 | [⚡ TL;DR](#-tldr) | [🧠 Architecture](#-architecture) | [🖼️ Gallery](#️-gallery) |
 | [📊 Results](#-results) | [🔬 Ablations](#-ablations--what-the-evidence-says) | [🧭 Honest status](#-honest-status--what-is-not-done) |
+| [🔧 v2.1 — closing the targets](#-v21--closing-the-targets) | [🧪 v2.2 — the honest next steps](#-v22--the-honest-next-steps-as-far-as-software-goes) | [🔒 v2.3 — the gate's evidence channel](#-v23--the-gates-evidence-channel) |
 | [🚀 Quickstart](#-quickstart) | [🗂️ Repository map](#️-repository-map) | [📚 Documentation](#-documentation) |
+
+> **Where the project stands.** v2.0 ran end to end and produced every number on this page.
+> v2.1 (§42–45), v2.2 (§46–51) and v2.3 (the gate's `iv` channel) are **written and not yet
+> run** — except §46–48, verified against synthetic beats, and the `iv` wiring, whose logic is
+> unit-tested. Anything unrun is labelled as such everywhere it appears.
 
 ---
 
@@ -73,13 +79,18 @@ flowchart TD
     E --> H["📝 Prompt builder<br/>system text + measurements<br/>+ top-k diagnoses with probabilities<br/>+ 32 soft tokens"]
     G --> H
     H --> I["💬 LLM 4-bit NF4 + LoRA<br/>r=16 · α=32 · dropout 0.05<br/>q/k/v/o + gate/up/down"]
-    I --> J{"🛡️ Validator<br/>numbers match measurements?<br/>negations contradict classifier?"}
+    B --> M["📐 Deterministic intervals · §46<br/>PR · QRS · QT · QTc · frontal axis<br/>12-lead vector-magnitude R-peaks"]
+    M --> H
+    I --> J{"🛡️ Evidence gate + validator<br/>every stated number vs its measurement<br/>claims the signal will not support<br/>negations vs the classifier"}
+    M --> J
     J -->|pass| K["✅ Structured report<br/>rhythm · rate · axis · intervals<br/>conduction · ST-T · hypertrophy · impression"]
+    J -->|repaired| K
     J -->|fail / low confidence| L["🚩 Flagged for human review"]
 
     style A fill:#fdeaea,stroke:#c0392b,color:#000
     style D fill:#e8f1fb,stroke:#2471a3,color:#000
     style J fill:#fef5e7,stroke:#b9770e,color:#000
+    style M fill:#f4ecf7,stroke:#6c3483,color:#000
     style K fill:#eafaf1,stroke:#1e8449,color:#000
     style L fill:#fdedec,stroke:#922b21,color:#000
 ```
@@ -247,6 +258,7 @@ A model card that only lists strengths is marketing. This one lists the gaps, sc
 | 🟠 **Lead-II-only R-peak detection** | used by §5 / §12 | Fails under axis deviation and corrupts every derived number. §46 ships the multi-lead fix; `measured_numbers.npz` predates it |
 | 🟡 **No external validation** | harness **completed** in §49, still unrun | Needs the dataset + the trained encoder + a GPU. §49 reads the set's own SNOMED table rather than a hand-copied one — a fabricated external number would be worse than none |
 | 🟡 **No clinician gold set** | protocol + adjudication + κ + scoring built in §50 | 2 cardiologists + adjudicator over 500–1,000 ECGs. The one step code cannot take |
+| ✅ ~~**Gate has no channel for 5 findings**~~ | **3 of 5 grounded in v2.3** | §42 gained an `iv` channel fed by §46's QTc and frontal axis: `left_axis_deviation`, `right_axis_deviation` and `qt_prolongation` are no longer struck for want of evidence. `low_voltage` (amplitude rule) and `pacemaker` (spike detector) still have none. The sex-specific QTc bound this needs is resolved from the data, not from PTB-XL's contradictory `sex` labels |
 | ⚪ **Five superclasses only** | NORM / MI / STTC / CD / HYP | The full 71 SCP statements are out of scope for v2 |
 | ⚪ **Fairness unmeasured** | no subgroup analysis | Age/sex stratified evaluation |
 
@@ -366,6 +378,104 @@ a translated machine report.
 
 ---
 
+## 🔒 v2.3 — the gate's evidence channel
+
+> **Status: written, not run.** No number here has changed. The logic is unit-tested
+> against stubs; the notebook itself is untouched — same 167 cells, same 8 figures,
+> no outputs or execution counts altered.
+
+v2.2 left a disagreement sitting inside the notebook. §42 declared five findings
+permanently ungroundable because they *"need PTB-XL+ 12SL features"* — but §46,
+written afterwards, measures QT/QTc and the frontal axis **from the waveform**. The
+gate was striking claims it already had the evidence to support.
+
+### The `iv` channel
+
+§42 gains a third evidence channel alongside `class` (a calibrated superclass
+probability) and `meas` (an R-peak measurement):
+
+| Finding | Grounded when |
+|:--|:--|
+| `left_axis_deviation` | §46's `axis_label` reads *left axis deviation* (−90° ≤ axis < −30°) |
+| `right_axis_deviation` | *right axis deviation* (90° < axis ≤ 180°) |
+| `qt_prolongation` | §46's `interval_flags` raises *qt prolongation* |
+
+Three of the five are now grounded. Only **`low_voltage`** (needs an amplitude
+criterion) and **`pacemaker`** (needs a spike detector) still have no channel.
+
+### Four decisions, because each could have gone wrong quietly
+
+| Decision | Why |
+|:--|:--|
+| **No thresholds duplicated** | The facts come from §46's own `interval_flags`, not constants copied into §42 — so the gate and the §47 validator that checks the same numbers cannot drift apart |
+| **Direction is respected** | Grounding *left* axis deviation on a right-deviated axis would license exactly the confident wrong claim the gate exists to stop. An **extreme** axis (beyond −90°) grounds *neither* label — it is abnormal, but it is not the thing either label names |
+| **Unmeasured ≠ refuted** | `INTERVALS` is built in §47b, *after* §42, so `signal_support` reads it at call time. With no measurement the finding is **unverifiable** — struck under the default `drop`, restored under `keep`. A record that *was* measured and came out normal is refuted, and `keep` does not resurrect it |
+| **No regression** | With `INTERVALS` empty the gate behaves exactly as it did before the channel existed, so §43 scores correctly whether or not §46–47 have run |
+
+### The sex encoding, resolved from the data
+
+QTc's upper bound is sex-specific — **450 ms for men, 460 ms for women** — so
+`qt_prolongation` cannot be grounded correctly without knowing which way PTB-XL's
+`sex` column runs. It is a bare `0`/`1`, and the two available labels **contradicted
+each other**: §1 of this notebook printed *"0=female, 1=male"*; the PTB-XL
+documentation has 0=male. Pick wrong and the wrong bound is applied to every record —
+a silent, systematic error in a clinical threshold.
+
+Neither label is trusted. `resolve_sex_encoding()` reads the mapping off the
+anthropometrics in the same table: adult males are ~13 cm taller and ~10 kg heavier,
+a separation far beyond sampling noise.
+
+| Guard | Rule |
+|:--|:--|
+| Sample size | ≥ 200 records with a finite value per group, per column |
+| Margin | ≥ 5 cm height, ≥ 3 kg weight — smaller gaps are ignored, not used |
+| Agreement | height and weight must point the same way, or the result is `None` |
+| Corroboration | prevalence (PTB-XL is ~52 % male) is printed and warns on disagreement, but **never decides** |
+| Failure | `None` → 450 ms everywhere, which is what §47's validator uses, so the two still agree |
+
+Expected outcome: **0 = male, 1 = female** — §1's label was backwards. The counts are
+consistent (code 0 holds 11,354 records, 52.1 %) but far too close to decide on, which
+is exactly why the derivation runs on height and weight and **prints its evidence**.
+§1 no longer asserts an encoding at all.
+
+> 🔍 **Watch this line when you run it.** §42 prints `=> male = 0, female = 1`. If it
+> instead prints `inconclusive`, or a `NOTE prevalence disagrees`, read it before
+> trusting any `qt_prolongation` grounding. Inconclusive is *safe* — every record then
+> gets the 450 ms bound — but it means the guards did not fire as expected.
+
+### Ordering
+
+`INTERVALS` is built in §47b, after §42, so:
+
+```
+§42 → … → §46, §47  (INTERVALS populated)  → RE-RUN §43 → §45
+```
+
+**§42 needs no re-run** — its function picks up the cache the moment it exists.
+**§43 does**, because that is where `signal_support` is actually called. Running §43
+without §46–47 remains valid; the three `iv` findings are simply unverifiable, exactly
+as before v2.3. See [docs/RUN_PLAN.md](docs/RUN_PLAN.md).
+
+### How it was checked
+
+No GPU and no dataset were needed, so the logic was exercised against stubs rather
+than asserted: both axis directions, extreme and NaN axis, long and normal QTc,
+measured vs unmeasured under both `drop` and `keep`, no regression on the `class` and
+`meas` channels, and three cases at QTc 455 ms confirming the bound actually moves
+with the resolved sex. The encoding resolver was run over synthetic PTB-XL-shaped
+tables: both mappings recovered, anthropometrics beating a contradicting prevalence,
+and `None` returned for no separation, a sub-floor gap, too few measurements,
+height/weight disagreement and unexpected codes.
+
+> **A note on sources.** The PTB-XL documentation could not be consulted —
+> `physionet.org` is blocked by this environment's network policy. The derivation
+> therefore stands on the data rather than on a quoted sentence, which is the stronger
+> of the two anyway: a doc page can be misread or can change, the height/weight
+> separation in the table cannot. Were the two ever to disagree, only the derivation
+> would show it.
+
+---
+
 ## 🚀 Quickstart
 
 ### 1. Get the data
@@ -421,6 +531,22 @@ Then **Run All**, in order — phases depend on each other's caches.
 | `CARDIOSCRIBE_DATA` | auto | path | PTB-XL root |
 | `CARDIOSCRIBE_WORK` | auto | path | Writable working directory |
 
+**Evidence gate and metrics (Part VI, §42–45)**
+
+| Variable | Default | Set to | Effect |
+|:--|:--|:--|:--|
+| `CARDIOSCRIBE_GATE_PRECISION` | `0.90` | e.g. `0.95` | Target precision the per-finding evidence thresholds are fitted to, on fold 9 |
+| `CARDIOSCRIBE_GATE_UNGROUNDABLE` | `drop` | `keep` | What the gate does with findings it cannot check: `low_voltage` and `pacemaker` always, plus any `iv`-channel finding on a record §46/§47 has not measured. `drop` costs recall; `keep` shows the other side of the trade. A finding that *was* measured and came out normal is refuted, and `keep` does not resurrect it |
+| `CARDIOSCRIBE_RATE_QUALIFIER` | `0` | `1` | Let the repair qualify the rate line. Only with a finding extractor taught to ignore it |
+
+**Optional datasets (Part VII, §46–51)** — each section skips cleanly, with a printed reason, when its variable is unset.
+
+| Variable | Needed by | Effect |
+|:--|:--|:--|
+| `CARDIOSCRIBE_PTBXL_PLUS` | §48 | Path to [PTB-XL+](https://physionet.org/content/ptb-xl-plus/). Cross-checks §46's waveform-derived intervals against vendor 12SL / Glasgow values. **Optional** — §46 does not need it |
+| `CARDIOSCRIBE_EXTERNAL` | §49 | Path to Chapman-Shaoxing / Ningbo / CPSC2018 for external validation. The harness reads the set's own SNOMED code table |
+| `CARDIOSCRIBE_MIMIC` | §51 | Path to MIMIC-IV-ECG for self-supervised pretraining. Needs a PhysioNet credentialed account; its DUA forbids sending the data to external APIs |
+
 ```bash
 CARDIOSCRIBE_SMOKE=0 CARDIOSCRIBE_TEMPLATES=3 CARDIOSCRIBE_S2_MAX_STEPS=700 \
   jupyter nbconvert --to notebook --execute CardioScribe_v2.ipynb
@@ -449,7 +575,12 @@ beat that by 2–3×, which §19h prints as it runs.
 
 ```
 CardioScribe-v2/
-├── CardioScribe_v2.ipynb          # the complete pipeline, Phases 0–10 + Part VI (§42–45), with executed outputs
+├── CardioScribe_v2.ipynb          # the complete pipeline: Phases 0–10 (executed, §1–41),
+│                                  #   Part VI  §42–45 target closure        (written, unrun)
+│                                  #   Part VII §46–51 intervals · validator · external
+│                                  #                   · gold set · SSL      (written; §46–48 verified)
+│                                  #   v2.3     §42    evidence gate: iv channel
+│                                  #                   + sex encoding        (written; logic tested)
 ├── README.md                      # you are here
 ├── requirements.txt               # pinned-by-floor dependency set
 ├── LICENSE                        # MIT (code only — data and models carry their own)

@@ -17,20 +17,46 @@ regenerated outside the notebook run, so each image is exactly what that run pro
 
 ## Regenerating these
 
-They are produced by running the notebook end to end. To re-extract them from a fresh run:
+They are produced by running the notebook end to end. Re-extract them from a fresh run with
+the snippet below, which locates each figure by a marker in its **cell source** rather than by
+cell index — indices shift whenever sections are inserted, and they have already shifted once
+(Parts VI and VII added 25 cells ahead of the Phase-9 figures).
 
 ```python
 import json, base64, pathlib
+
+MARKERS = {                                     # unique substring of the producing cell
+    "01_superclass_distribution":              "# Visualize superclass distribution",
+    "02_preprocessing_raw_vs_filtered":        "# --- 4c. Full preprocessing function ---",
+    "03_rpeak_detection_lead_ii":              "# Visualize R-peak detection on one record",
+    "04_resnet1d_training_curves":             "# 10d. Evaluate ResNet on fold 10",
+    "05_encoder_comparison_resnet_vs_transformer": "# 10g. Evaluate Transformer on fold 10",
+    "06_calibration_temperature_scaling":      "# 31. Per-class temperature scaling + ECE",
+    "07_risk_coverage_curve":                  "# 32. Risk-coverage curve",
+    "08_clinical_report_card":                 "# 40. Visual report card",
+}
+
 nb = json.load(open("CardioScribe_v2.ipynb"))
-cells = {11: "01_superclass_distribution", 17: "02_preprocessing_raw_vs_filtered",
-         20: "03_rpeak_detection_lead_ii", 46: "04_resnet1d_training_curves",
-         49: "05_encoder_comparison_resnet_vs_transformer",
-         118: "06_calibration_temperature_scaling", 120: "07_risk_coverage_curve",
-         137: "08_clinical_report_card"}
-for idx, name in cells.items():
-    for out in nb["cells"][idx].get("outputs", []):
-        png = out.get("data", {}).get("image/png")
-        if png:
-            raw = "".join(png) if isinstance(png, list) else png
-            pathlib.Path(f"outputs/figures/{name}.png").write_bytes(base64.b64decode(raw))
+out = pathlib.Path("outputs/figures"); out.mkdir(parents=True, exist_ok=True)
+
+for name, marker in MARKERS.items():
+    for cell in nb["cells"]:
+        if cell["cell_type"] != "code" or marker not in "".join(cell["source"]):
+            continue
+        for o in cell.get("outputs", []):
+            png = o.get("data", {}).get("image/png")
+            if png:
+                raw = "".join(png) if isinstance(png, list) else png
+                (out / f"{name}.png").write_bytes(base64.b64decode(raw))
+        break
+    else:
+        print(f"no cell matched marker for {name}")
 ```
+
+## Why there are no figures from Parts VI and VII
+
+Sections 42–51 (the v2.1 target-closure work and the v2.2 next-steps work) are **written but
+not executed** — they carry no `execution_count` and no outputs, so they produce no figures
+yet. The eight above are all from the v2.0 run. See
+[`../../docs/RUN_PLAN.md`](../../docs/RUN_PLAN.md) for what re-running produces, and note that
+§40's report card is the figure a completed re-run would regenerate first.

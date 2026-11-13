@@ -6,7 +6,7 @@
 
 </div>
 
-Legend: ✅ implemented and run · 🟡 implemented, deliberately not run · ❌ not met · ➖ out of scope for this run, disclosed
+Legend: ✅ implemented and run · 🟡 implemented, deliberately not run · ❌ measured and not met · 🔄 patched, pending the re-run that would re-measure it · ➖ out of scope for this run, disclosed
 
 ---
 
@@ -39,6 +39,27 @@ The table above still shows the v2.0 results because those are the only results 
 See **[docs/RUN_PLAN.md](RUN_PLAN.md)** for the re-run, and for a frank account of which
 targets are expected to pass — target 3 will, target 4 strictly probably will not, and
 target 2 may be settled in the MLP arm's favour.
+
+---
+
+### v2.3 — the gate's evidence channel
+
+Parts VI and VII disagreed with each other, and Part VII was right. §42 declared five
+findings permanently ungroundable because they *"need PTB-XL+ 12SL features"*; §46,
+written afterwards, measures QT/QTc and the frontal axis **from the waveform**. The gate
+was striking claims it already had the evidence to support.
+
+| Change | Effect |
+|:--|:--|
+| `iv` evidence channel in §42 | `left_axis_deviation`, `right_axis_deviation` and `qt_prolongation` are grounded by §46's measurements. Only `low_voltage` and `pacemaker` now lack a channel |
+| Thresholds sourced, not copied | The facts come from §46's own `interval_flags`, so the gate and the §47 validator cannot drift apart |
+| Direction respected | A right-deviated axis does not ground a *left* axis claim; an extreme axis grounds neither |
+| Unmeasured ≠ refuted | `INTERVALS` is built in §47b, after §42, so `signal_support` reads it at call time. Unmeasured findings are unverifiable — struck under `drop`, restored under `keep`; measured-and-normal is refuted and `keep` does not resurrect it |
+| Sex encoding derived | QTc's bound is sex-specific and PTB-XL's `sex` labels contradicted each other, so §42 derives the mapping from height and weight, with guards, and falls back to the 450 ms bound when inconclusive |
+
+**Status: written, not run.** The logic is unit-tested against stubs; no notebook cell
+was executed, and no measured number changed. Ordering matters on the re-run — §46–47
+must populate `INTERVALS` before §43 is re-scored. See **[RUN_PLAN.md](RUN_PLAN.md)**.
 
 ---
 
@@ -125,7 +146,7 @@ target 2 may be settled in the MLP arm's favour.
 | 20 | Train DDP with realistic noise — the classifier's own predictions, not clean gold labels | §19d | ✅ | Top-3 with probabilities from the Stage-1 classifier |
 | **Phase 7 — Inference and guardrails** |
 | 21 | Prompt with top-k diagnoses and probabilities, measured numbers and soft tokens; instruct the model to flag disagreement and write "uncertain" below threshold | §19e, §21 | ✅ | Threshold later replaced by the calibrated 0.852 |
-| 22 | A validator checks numbers against measurements and negations against the classifier; failures flagged for human review | §22, §42b | ✅ | ±10 bpm tolerance; 7 negator forms; 10/100 flagged. v2.1 adds the repair the check implies: strike clauses the signal will not support, write in the measured rate, hedge below the calibrated threshold — every edit recorded in `actions`, so the delta between the model's text and the shipped text is never silent |
+| 22 | A validator checks numbers against measurements and negations against the classifier; failures flagged for human review | §22, §42, §42b, §47 | ✅ | ±10 bpm tolerance; 7 negator forms; 10/100 flagged. v2.1 adds the repair the check implies: strike clauses the signal will not support, write in the measured rate, hedge below the calibrated threshold — every edit recorded in `actions`, so the delta between the model's text and the shipped text is never silent |
 | **Phase 8 — Evaluation and demo** |
 | — | See §5 below | §23–§41 | 🟡 | |
 
@@ -135,12 +156,12 @@ target 2 may be settled in the MLP arm's favour.
 
 | Dimension | Blueprint asks for | Notebook | Status |
 |:--|:--|:--|:--:|
-| **Encoder** | Macro-AUROC and F1 on fold 10; external validation on an unseen dataset | §10d/§10g; §41 harness | 🟡 external harness written, deliberately unrun |
+| **Encoder** | Macro-AUROC and F1 on fold 10; external validation on an unseen dataset | §10d/§10g; §41 → §49 | 🟡 fold 10 ✅. External harness **completed** in v2.2 §49 (reads the dataset's own SNOMED code table rather than a hand-copied one) — still unrun, because it needs the dataset, the trained encoder and a GPU |
 | **Report accuracy** | Extract findings from generated and reference reports; per-finding P/R/F1 | §23, §26 | ✅ |
 | **Hallucination** | Share of unsupported findings; wrong-label stress test | §26, §27 | ✅ 0.360 and 0.800 |
-| **Numbers** | HR, PR, QRS, QTc in text vs measured | §22, §26 | 🟡 HR only (PR/QRS/QTc need PTB-XL+); HR never stated |
+| **Numbers** | HR, PR, QRS, QTc in text vs measured | §22, §26 → §42, §46–48 | 🟡 v2.0 checked HR only, and HR was stated in 0/100 reports. v2.2 §46 measures PR, QRS, QT, QTc and axis **from the waveform** (PTB-XL+ is a cross-check in §48, not a prerequisite) and §47 validates all of them; v2.1 §9a puts a bpm value in every gold `rate` field. Unrun |
 | **Text metrics** | BLEU, ROUGE, BERTScore as secondary | §24 | ✅ BLEU-4 and ROUGE-L; BERTScore skipped (extra dependency, secondary) |
-| **Human review** | Cardiologist Likert rating of 100–200 reports | §29 | 🟡 `human_review_sheet.csv` exported; review not performed |
+| **Human review** | Cardiologist Likert rating of 100–200 reports | §29, §50 | 🟡 `human_review_sheet.csv` exported in v2.0. v2.2 §50 adds the full gold-set protocol: blank per-reader intake sheets, Cohen's κ **before** adjudication, unresolved disagreements left unresolved, and scoring against the adjudicated reading. No readings — this is the step code cannot take |
 | **Robustness** | Added noise, lead-off, different devices and sites | §30 | ✅ 11 conditions |
 
 ### The four required ablations
@@ -148,8 +169,8 @@ target 2 may be settled in the MLP arm's favour.
 | # | Ablation | Status | Result |
 |:--:|:--|:--:|:--|
 | 1 | ResNet + MLP (Doc 1) vs transformer encoder + Q-Former (Doc 2) | ✅ | ResNet 0.9307 vs Transformer 0.9169 |
-| 2 | MLP vs Q-Former with the same encoder | ✅ | **MLP 0.9171 / R@1 0.014** vs Q-Former 0.8920 / R@1 0.002 — the blueprint's choice loses at this budget |
-| 3 | 0.5–40 Hz vs wider band; with vs without wavelet denoising | 🟡 | Harness complete (§33), `RUN_PREPROCESSING_ABLATIONS=False`. **The one ablation this run leaves unsettled.** |
+| 2 | MLP vs Q-Former with the same encoder | ✅ | **MLP 0.9171 / R@1 0.014** vs Q-Former 0.8920 / R@1 0.002 — the blueprint's choice loses at this budget. Compared on AUROC and retrieval only; v2.1 §44 adds the **F1** comparison blueprint target 2 actually names (unrun) |
+| 3 | 0.5–40 Hz vs wider band; with vs without wavelet denoising | 🟡 | Harness complete (§33), `RUN_PREPROCESSING_ABLATIONS=False` — a fair comparison retrains the encoder per variant |
 | 4 | DDP with clean labels vs noisy classifier predictions vs no DDP | ✅ | no 0.594 / noisy 0.610 / clean 0.618 / wrong 0.435 F1 |
 
 ### Beyond the blueprint
@@ -160,6 +181,8 @@ Two additions the blueprint does not ask for, included because the guardrails ar
 |:--|:--|
 | **§31 Per-class temperature scaling** | Raw sigmoid outputs are miscalibrated, which corrupts both the `p=` values in the prompt and the abstention threshold. ECE 0.0818 → 0.0221. |
 | **§32 Risk–coverage selective prediction** | `UNCERTAIN_THRESHOLD = 0.35` was a guess. The curve sets it at **0.852** for ≤ 10 % risk at 48.4 % coverage. |
+| **§42 Evidence gate with three channels** *(v2.1 + v2.3)* | Blueprint step 22 specifies a validator that *checks and flags*. The gate adds the repair the check implies, and grounds each claim in a named channel — classifier, R-peak measurement, or §46 interval — reading the signal only, never the reference. |
+| **§42 Derived sex encoding** *(v2.3)* | The QTc bound is sex-specific and PTB-XL's `sex` labels contradicted each other, so the mapping is inferred from anthropometrics with explicit guards rather than assumed. The blueprint does not mention this; getting it wrong would have mis-set a clinical threshold on every record. |
 
 Also beyond scope-of-ask: §36 cross-attention grounding, §37 per-lead saliency, §38 retrieval-based precedent, §39 one-call API, §40 report card.
 
@@ -172,9 +195,9 @@ Also beyond scope-of-ask: §36 cross-attention grounding, §37 per-lead saliency
 | GPU | 1× RTX 3090/4090 (24 GB) or cloud equivalent | Single-GPU, 4-bit NF4 decoder | ✅ |
 | RAM and disk | 64 GB RAM; 0.5–1 TB SSD | PTB-XL plus encoder caches ≈ 100 GB | ✅ |
 | Core software | Python 3.11, PyTorch 2.x, `transformers`, `peft`, `bitsandbytes`, `accelerate` | [`requirements.txt`](../requirements.txt) | ✅ |
-| Signal and data | `wfdb`, `scipy`, `neurokit2`, `scikit-learn`, `pandas`; `pywt` only if ablating wavelets | all present, `PyWavelets` optional | ✅ |
+| Signal and data | `wfdb`, `scipy`, `neurokit2`, `scikit-learn`, `pandas`; `pywt` only if ablating wavelets | all present, `PyWavelets` optional. `neurokit2` now also does DWT wave delineation for §46 | ✅ |
 | Tracking | Weights & Biases or MLflow | Notebook outputs serve as the run record | 🟡 |
-| Access | PhysioNet credentialing; Hugging Face Llama licence | Neither needed — PTB-XL is open and the decoder is ungated | ➖ |
+| Access | PhysioNet credentialing; Hugging Face Llama licence | Neither needed for what runs — PTB-XL is open and the decoder is ungated. Credentialing is required only for §51 (MIMIC-IV-ECG SSL pretraining), which is written and blocked on it | ➖ |
 | Optional | Ethics/IRB approval; 1–2 cardiologists for the gold set | Not obtained; disclosed | ➖ |
 
 ---
@@ -183,11 +206,11 @@ Also beyond scope-of-ask: §36 cross-attention grounding, §37 per-lead saliency
 
 | Data | Blueprint | Status |
 |:--|:--|:--:|
-| PTB-XL (+ PTB-XL+) | main supervised set and evaluation | ✅ PTB-XL 1.0.3 · ➖ PTB-XL+ absent (costs PR/QRS/QTc/axis) |
+| PTB-XL (+ PTB-XL+) | main supervised set and evaluation | ✅ PTB-XL 1.0.3 · ➖ PTB-XL+ absent — and it costs nothing structural: §46 derives PR/QRS/QT/QTc/axis from the waveform, and §48 uses PTB-XL+ only as an optional vendor cross-check (`CARDIOSCRIBE_PTBXL_PLUS`) |
 | MIMIC-IV-ECG (~800k) | encoder pretraining and report training | ➖ credentialing not obtained |
-| Chapman-Shaoxing / CODE-15 % / CPSC2018 | encoder pretraining and external validation | 🟡 §41 harness ready |
+| Chapman-Shaoxing / CODE-15 % / CPSC2018 | encoder pretraining and external validation | 🟡 §49 harness **complete** — label loading and SNOMED→superclass mapping included; set `CARDIOSCRIBE_EXTERNAL` and run |
 | ECGInstruct / ECG-Grounding / ECG-Chat | optional extra instruction tuning | ➖ |
-| Clinician gold set (500–1,000 ECGs) | final evaluation | 🟡 `human_review_sheet.csv` is the intake format |
+| Clinician gold set (500–1,000 ECGs) | final evaluation | 🟡 §50 builds `gold_intake_blank.csv` per reader, merges readings, computes κ, adjudicates and scores. Needs actual cardiologists |
 
 ---
 
@@ -195,7 +218,7 @@ Also beyond scope-of-ask: §36 cross-attention grounding, §37 per-lead saliency
 
 | Risk | Blueprint mitigation | Implemented |
 |:--|:--|:--:|
-| Learning machine-report style and its errors | Clinician gold set; PTB-XL's human-validated folds | 🟡 folds 9/10 used; gold set absent |
+| Learning machine-report style and its errors | Clinician gold set; PTB-XL's human-validated folds | 🟡 folds 9/10 used; gold-set machinery built in §50, readings absent. v2.1 also removed one way the model learned the *reference's* artefacts: the SCP fallback used to write `"sttc (from SCP label)"` into gold prose, and the model reproduced it |
 | Hallucination | DDP with probabilities, measured numbers, validator, wrong-label stress test | ✅ all four; the stress test shows work remains |
 | Data access delays | Start PhysioNet credentialing first | ➖ sidestepped by using PTB-XL only |
 | Compute | Train on subsets, cache frozen encoder outputs | ✅ memmapped caches; reduced-budget ablations |
@@ -206,14 +229,34 @@ Also beyond scope-of-ask: §36 cross-attention grounding, §37 per-lead saliency
 
 ## 9. Scorecard
 
-| | Count |
-|:--|:--:|
-| ✅ Fully implemented and run | **34** |
-| 🟡 Implemented, deliberately not run or budget-capped | **13** |
-| ❌ Target not met | **3** (all downstream of the Stage-2 smoke test) |
-| ➖ Out of scope for this run, disclosed | **9** |
+### By blueprint phase
 
-**Every phase of the blueprint — 0 through 10 — is present in the notebook, and every one of the 22 numbered steps is either executed or explicitly accounted for.** The gaps are named, flag-gated and reproducible, not hidden.
+| Phase | Steps | State |
+|:--|:--|:--|
+| 0 — Access and setup | 1–2 | ✅ for what runs; PhysioNet credentialing open, needed only for §51 |
+| 1 — Data audit | 3–4 | ✅ executed |
+| 2 — Preprocessing | 5–9 | ✅ executed; the filter-band ablation (step 7) is flag-gated |
+| 3 — Text curation | 10–13 | ✅ executed; v2.1 rewrote §9a (numeric `rate`, no schema placeholder) — **re-run pending** |
+| 4 — Stage 0, encoder | 14–16 | ✅ executed. **Gate passed at 0.9307** |
+| 5 — Stage 1, Q-Former | 17–18 | ✅ executed; interval regression extendable via §46 |
+| 6 — Stage 2, instruction tuning | 19–20 | 🟡 hyperparameters match; budget-capped at the smoke-test setting. §19h rewritten for a real schedule — **unrun** |
+| 7 — Inference and guardrails | 21–22 | ✅ executed; v2.1 §42b adds repair to the check, v2.2 §47 extends it to every number — **unrun** |
+| 8 — Evaluation and demo | §8 | 🟡 clinical metrics, stress test, robustness, calibration and 3 of 4 ablations executed |
+
+### By target
+
+| Blueprint §1 target | State |
+|:--|:--|
+| Encoder macro-AUROC ≥ 0.90 | ✅ **met** at 0.9307, measured |
+| Hallucination < 0.05 | 🔄 0.360 measured at the smoke-test checkpoint. Three causes identified (untrained decoder, a schema placeholder leaking into gold prose, a metric implementing half its definition); all three addressed in §9a and §42–43, none re-measured |
+| Numbers agree ≥ 95 % | 🔄 never fired — HR stated in 0/100. Root cause was upstream of training: no gold target contained a number. Fixed in §9a-pre/§9a; §46–47 extend the check to PR/QRS/QT/QTc/axis. Unrun |
+| Finding-F1 beats ResNet+MLP | 🔄 0.643 measured; the two arms were never compared on F1. §44 builds the missing arm. Unrun |
+
+> The earlier edition of this scorecard attributed all three open targets to the Stage-2 smoke test. That was the largest cause but not the only one — two had root causes a longer training run would not have touched, documented in §1 above and in [`RUN_PLAN.md`](RUN_PLAN.md).
+
+### Coverage
+
+**Every phase of the blueprint — 0 through 10 — is present in the notebook, and every one of the 22 numbered steps is either executed or explicitly accounted for.** Parts VI (§42–45) and VII (§46–51) add the target-closure work and the four next steps, and v2.3 closes the disagreement between them by wiring §46 into the §42 gate; of those four, one is complete and verified (§46–48 interval measurement), and three are blocked on credentialing, a dataset download or actual cardiologists — each shipped as working machinery with **no fabricated number attached**.
 
 ---
 

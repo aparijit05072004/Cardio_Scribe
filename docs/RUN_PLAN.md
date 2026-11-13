@@ -62,6 +62,8 @@ Target 2 names a metric neither arm was ever scored on.
 | 9 | **149** (§43) | Re-scoring with both hallucination definitions, reported side by side |
 | 10 | **151** (§44) | The missing MLP arm with a soft-token head, for the head-to-head |
 | 11 | **153** (§45) | Re-scored target table; writes `results/results_summary.json` |
+| 12 | **6** (§1) *(v2.3)* | Stops asserting `"0=female, 1=male"`; §42 derives the mapping and prints it |
+| 13 | **145** (§42) *(v2.3)* | `iv` evidence channel: §46's QTc and frontal axis ground `left_axis_deviation`, `right_axis_deviation` and `qt_prolongation`. Thresholds come from §46's `interval_flags`, so the gate and the §47 validator cannot drift apart |
 
 Every v2.0 output is still in the notebook. Cells whose source changed carry a banner
 saying their output predates the patch.
@@ -247,6 +249,50 @@ Added in v2.2. Only §46–48 produce numbers without new access.
 
 Extra flags: `CARDIOSCRIBE_PTBXL_PLUS`, `CARDIOSCRIBE_EXTERNAL`, `CARDIOSCRIBE_MIMIC`.
 
+### Ordering: §47 feeds the gate, so §43 must be re-scored after it
+
+Since v2.3 the evidence gate has a third channel, `iv`, fed by §46's measurements
+(`SIGNAL_RULES` → `interval_facts`). It grounds three findings the gate previously
+always struck: `left_axis_deviation`, `right_axis_deviation` and `qt_prolongation`.
+
+`INTERVALS` is built in **§47b**, which runs *after* §42. `signal_support` therefore
+reads it at call time, so:
+
+```
+run §42 → … → §46, §47  (INTERVALS populated)  → RE-RUN §43 → §45
+```
+
+* **§42 does not need re-running.** Its function picks up `INTERVALS` the moment the
+  cache exists.
+* **§43 does.** It is where `signal_support` is actually called; scored before §47 it
+  uses the old two-channel evidence.
+* **Running §43 without §46–47 is still valid** — the three `iv` findings are simply
+  unverifiable, exactly as before v2.3. Nothing silently changes meaning.
+
+A record that was *measured and came out normal* is not the same as one that was
+*never measured*: the first refutes the claim, the second merely fails to check it.
+Only the second is restored by `CARDIOSCRIBE_GATE_UNGROUNDABLE=keep`.
+
+### Watch the sex-encoding line §42 prints
+
+QTc's bound is 450 ms for men and 460 ms for women, so `qt_prolongation` depends on
+PTB-XL's `sex` encoding — which §1 and the dataset documentation disagreed about.
+§42 now derives it from height and weight instead of trusting either, and prints its
+working. Expect:
+
+```
+Sex encoding, derived from the data (not from either label):
+  height  0=... 1=... cm (n=.../...) -> taller/heavier is 0
+  weight  0=... 1=... kg (n=.../...) -> taller/heavier is 0
+  prevalence agrees (majority code 0, 52.1%)
+  => male = 0, female = 1
+```
+
+If it instead prints `inconclusive`, or a `NOTE prevalence disagrees` line, read it
+before trusting any `qt_prolongation` grounding. Inconclusive is safe — every record
+then gets the 450 ms bound, matching §47's validator — but it means the guards did
+not fire as expected and is worth understanding.
+
 > If you want PR/QRS/QTc/axis in the *generated* reports rather than only validated,
 > add them to `REG_FIELDS` (§12) and to the prompt via `format_measurements_full`
 > (§47), then re-run Stage 1 and Stage 2. That is a larger change than §47 alone and
@@ -267,5 +313,5 @@ Extra flags: `CARDIOSCRIBE_PTBXL_PLUS`, `CARDIOSCRIBE_EXTERNAL`, `CARDIOSCRIBE_M
 | `CARDIOSCRIBE_TIME_BUDGET_H` | none | Checkpoint and stop before a session timeout |
 | `CARDIOSCRIBE_RESUME` | `0` | Resume Stage 2 from `stage2_state.pt` |
 | `CARDIOSCRIBE_GATE_PRECISION` | `0.90` | Validation precision the gate thresholds target |
-| `CARDIOSCRIBE_GATE_UNGROUNDABLE` | `drop` | `drop` or `keep` findings with no evidence channel |
+| `CARDIOSCRIBE_GATE_UNGROUNDABLE` | `drop` | `drop` or `keep` findings with no evidence channel. Since v2.3 this also covers `iv`-channel findings on records §46/§47 has not measured |
 | `CARDIOSCRIBE_RATE_QUALIFIER` | `0` | Add "(bradycardia)" to the repaired rate line — see §42b |

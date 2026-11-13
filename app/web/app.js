@@ -22,6 +22,7 @@ const state = {
   view: { start: 0, end: 1 },   // fraction of the strip visible
   drag: null,
   stream: null,
+  static: false,
 };
 
 /* ───────────────────────── boot ───────────────────────── */
@@ -33,8 +34,21 @@ async function boot() {
     node.value = '5';
   }
 
-  try {
-    const health = await (await fetch('/api/health')).json();
+  // A static host (GitHub Pages) has no API. build_pages.py sets the flag, so
+  // the published page never probes and never logs a 404. The probe remains as
+  // a fallback for anyone serving app/web/ statically by hand.
+  let health = null;
+  if (!window.CARDIOSCRIBE_STATIC) {
+    try {
+      const res = await fetch('api/health', { cache: 'no-store' });
+      if (res.ok) health = await res.json();
+    } catch { /* no API here */ }
+  }
+
+  state.static = !health;
+  if (state.static) {
+    enterStaticMode();
+  } else {
     state.mode = health.mode;
     const chip = $('mode-chip');
     chip.textContent = health.mode === 'live' ? 'live model' : 'demo mode';
@@ -46,19 +60,60 @@ async function boot() {
     if (health.mode === 'live' && !health.runtime_ready) {
       showError('The live runtime is configured but incomplete: ' + health.missing.join(', '));
     }
-  } catch {
-    showError('Cannot reach the CardioScribe API. Is the server running?');
   }
 
-  try {
-    const templates = await (await fetch('/api/templates')).json();
-    for (const t of templates) $('opt-template').append(new Option(t.label, t.name));
-  } catch { /* the select simply stays empty; the server falls back */ }
+  if (state.static) {
+    for (const [name, label] of [['full_report', 'Full 8-field structured report']]) {
+      $('opt-template').append(new Option(label, name));
+    }
+  } else {
+    try {
+      const templates = await (await fetch('api/templates')).json();
+      for (const t of templates) $('opt-template').append(new Option(t.label, t.name));
+    } catch { /* the select simply stays empty; the server falls back */ }
+  }
 
   wireUpload();
   wireCanvas();
   $('btn-analyze').addEventListener('click', analyze);
   $('btn-save-review').addEventListener('click', saveReview);
+}
+
+function enterStaticMode() {
+  state.mode = 'demo';
+  const chip = $('mode-chip');
+  chip.textContent = 'browser demo';
+  chip.className = 'chip chip--mode is-demo';
+  chip.title = 'Static hosting: the signal path runs in this tab, no server involved';
+
+  const note = $('demo-note');
+  note.classList.remove('hidden');
+  note.querySelector('.panel__h').textContent =
+    'Browser demo — the signal path runs here, no model and no server';
+  note.querySelectorAll('p')[0].innerHTML =
+    'This page is static, so <strong>nothing is uploaded anywhere</strong> — your file is ' +
+    'read in the tab. Band-pass filtering, R-peak detection, heart rate and RR variability ' +
+    'are genuinely computed, and match the server bit for bit. Everything that needs the ' +
+    'trained model — the report, diagnosis probabilities, attention, saliency and precedent ' +
+    'retrieval — is <strong>withheld rather than invented</strong>.';
+  note.querySelectorAll('p')[1].innerHTML =
+    'Clone the repository and run the app locally against trained weights for the real ' +
+    'pipeline. See <code>app/README.md</code>.';
+
+  // Saving a review writes a CSV server-side, which a static host cannot do —
+  // and there is no model output to review here anyway.
+  const save = $('btn-save-review');
+  save.disabled = true;
+  save.textContent = 'Review capture needs the local server';
+  save.title = 'Run the app locally to append readings to human_review_sheet.csv';
+  $('review-status').textContent =
+    'Clinician review is captured when the app runs locally against the pipeline.';
+
+  const docs = $('api-docs-link');
+  if (docs) {
+    docs.textContent = 'source on GitHub';
+    docs.href = 'https://github.com/aparijit05072004/Cardio_Scribe';
+  }
 }
 
 /* ─────────────────────── upload ─────────────────────── */
@@ -71,11 +126,38 @@ function wireUpload() {
   });
   input.addEventListener('change', () => acceptFiles(input.files));
 
+  $('btn-sample').addEventListener('click', loadSample);
+
   ['dragenter', 'dragover'].forEach((ev) =>
     dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add('is-over'); }));
   ['dragleave', 'drop'].forEach((ev) =>
     dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove('is-over'); }));
   dz.addEventListener('drop', (e) => acceptFiles(e.dataTransfer.files));
+}
+
+const SAMPLE_STEM = 'static/sample/synthetic_sinus_72bpm';
+
+async function loadSample() {
+  const btn = $('btn-sample');
+  btn.disabled = true;
+  btn.textContent = 'Loading…';
+  clearError();
+  try {
+    const [hea, dat] = await Promise.all(
+      ['hea', 'dat'].map(async (ext) => {
+        const res = await fetch(`${SAMPLE_STEM}.${ext}`, { cache: 'force-cache' });
+        if (!res.ok) throw new Error(`sample ${ext} unavailable (${res.status})`);
+        return new File([await res.blob()], `synthetic_sinus_72bpm.${ext}`);
+      }));
+    state.hea = hea;
+    state.dat = dat;
+    paintFileChips();
+  } catch (err) {
+    showError(`Could not load the sample: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Load a synthetic sample';
+  }
 }
 
 function acceptFiles(fileList) {
@@ -129,6 +211,25 @@ async function analyze() {
   renderSteps('queued');
   $('step-message').textContent = 'Uploading…';
 
+  if (state.static) {
+    try {
+      renderSteps('qc');
+      $('step-message').textContent = 'Reading the WFDB pair in your browser...';
+      await new Promise(r => setTimeout(r, 60));      // let the stepper paint
+      renderSteps('measure');
+      $('step-message').textContent =
+        'Band-pass 0.5-40 Hz (zero-phase SOS) and R-peak detection...';
+      const result = await Standalone.analyze(state.hea, state.dat);
+      renderResult(result);
+      $('progress').classList.add('hidden');
+    } catch (err) {
+      failProgress(err && err.message ? err.message : String(err));
+      return;
+    }
+    $('btn-analyze').disabled = false;
+    return;
+  }
+
   const body = new FormData();
   body.append('hea_file', state.hea);
   body.append('dat_file', state.dat);
@@ -138,7 +239,7 @@ async function analyze() {
 
   let jobId;
   try {
-    const res = await fetch('/api/analyze', { method: 'POST', body });
+    const res = await fetch('api/analyze', { method: 'POST', body });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || `Upload failed (${res.status})`);
     jobId = data.job_id;
@@ -150,7 +251,7 @@ async function analyze() {
   }
 
   if (state.stream) state.stream.close();
-  const stream = new EventSource(`/api/jobs/${jobId}/stream`);
+  const stream = new EventSource(`api/jobs/${jobId}/stream`);
   state.stream = stream;
 
   stream.onmessage = async (event) => {
@@ -164,7 +265,7 @@ async function analyze() {
     if (data.status === 'completed') {
       stream.close();
       try {
-        const job = await (await fetch(`/api/jobs/${jobId}`)).json();
+        const job = await (await fetch(`api/jobs/${jobId}`)).json();
         renderResult(job.result);
         $('progress').classList.add('hidden');
       } catch (err) { failProgress(String(err)); }
@@ -607,7 +708,7 @@ async function saveReview() {
   const status = $('review-status');
   status.textContent = 'Saving…';
   try {
-    const res = await fetch('/api/review', {
+    const res = await fetch('api/review', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

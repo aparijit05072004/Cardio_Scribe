@@ -6,7 +6,7 @@
 <title>CardioScribe v2 — ECG Report Studio</title>
 <meta name="description" content="Local ECG-to-report research prototype. Not a medical device.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🫀</text></svg>">
-<link rel="stylesheet" href="/static/styles.css">
+<link rel="stylesheet" href="static/styles.css">
 </head>
 <body>
 
@@ -52,6 +52,11 @@
       <div class="dropzone__sub">or click to browse · 10 s · 500 Hz · 12 leads</div>
       <input type="file" id="file-input" multiple accept=".hea,.dat" hidden>
     </div>
+
+    <p class="trysample">
+      No ECG to hand? <button type="button" id="btn-sample" class="linkbtn">Load a synthetic
+      sample</button> — a generated 10 s sinus rhythm at 72 bpm, not a real recording.
+    </p>
 
     <div class="files">
       <div class="file" id="file-hea"><span class="file__tag">.hea</span><span class="file__name">no header file</span></div>
@@ -174,11 +179,12 @@
 
   <footer class="foot">
     CardioScribe v2 · PTB-XL 1.0.3 · MIT (code only) ·
-    <a href="/docs">API docs</a> ·
+    <a href="docs" id="api-docs-link">API docs</a> ·
     <span class="muted">every output is drafted for a qualified human to accept, edit or reject</span>
   </footer>
 </main>
 
-<script src="/static/app.js"></script>
+<script src="static/standalone.js"></script>
+<script src="static/app.js"></script>
 </body>
 </html>

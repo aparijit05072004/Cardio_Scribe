@@ -12,6 +12,7 @@
 [![Dataset](https://img.shields.io/badge/Data-PTB--XL%201.0.3-0A7BBB)](https://physionet.org/content/ptb-xl/1.0.3/)
 [![Encoder gate](https://img.shields.io/badge/Encoder%20gate-0.9307%20AUROC%20✓-2ecc71)](#-results)
 [![Status](https://img.shields.io/badge/Status-Research%20prototype-f39c12)](#-honest-status--what-is-not-done)
+[![Live demo](https://img.shields.io/badge/Live%20demo-GitHub%20Pages-2dd4bf)](https://aparijit05072004.github.io/Cardio_Scribe/)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
 > ⚠️ **Not a medical device.** Clinician-in-the-loop decision support only. Every output is drafted for a qualified human to accept, edit or reject. No regulatory clearance has been sought or obtained.
@@ -479,7 +480,14 @@ height/weight disagreement and unexpected codes.
 
 ## 🖥️ Web app
 
-`app/` is a local web interface for the pipeline: **upload a 12-lead WFDB record, watch it
+### ▶ Try it now — <https://aparijit05072004.github.io/Cardio_Scribe/>
+
+A published page that needs no install and uploads nothing: it reads your WFDB record in
+the tab, runs the real 0.5–40 Hz zero-phase band-pass and R-peak detection — **verified
+bit-identical to the server** — and withholds everything that needs the trained model
+rather than inventing it. A synthetic sample is one click away if you have no ECG to hand.
+
+`app/` is the full local interface: **upload a 12-lead WFDB record, watch it
 process, get the audited report**. One process, no Node, no build step, no CDN.
 
 ```bash

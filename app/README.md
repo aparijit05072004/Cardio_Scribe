@@ -13,6 +13,29 @@
 
 ---
 
+## Live page
+
+**<https://aparijit05072004.github.io/Cardio_Scribe/>** — no install, nothing to upload.
+
+GitHub Pages serves files, not processes: there is no Python, no GPU and no model behind
+that URL. But **demo mode never needed any of those** — it is pure signal processing — so
+[`web/standalone.js`](web/standalone.js) reimplements it in the browser. The page really
+parses your WFDB record, really runs the 0.5–40 Hz zero-phase band-pass, really detects
+R-peaks and computes heart rate and RR variability, and really withholds everything else.
+
+It is verified **bit-identical to the server**: the embedded second-order sections are the
+ones SciPy produces for `butter(4, [0.5, 40], fs=500, output='sos')`, `sosfiltfilt` is
+reimplemented with SciPy's `sosfilt_zi` seeding, and the detector follows
+`scipy.signal.find_peaks` plateau and distance semantics. Across 16 synthetic records
+spanning 45–130 bpm and three frontal axes, heart rate, RR mean and RR SD agree to
+**0.0000000000**.
+
+Your file never leaves the tab — there is nowhere for it to go.
+
+Rebuild it with `python app/tools/build_pages.py --out site`.
+
+---
+
 ## Run it in 30 seconds
 
 ```bash
@@ -41,7 +64,7 @@ PTB-XL training metadata with its cached text embeddings. So a fresh clone **can
 
 | | **DEMO** (default) | **LIVE** |
 |:--|:--|:--|
-| Needs | nothing but the pip install | GPU + checkpoints + PTB-XL |
+| Needs | nothing but the pip install — or just the [live page](https://aparijit05072004.github.io/Cardio_Scribe/) | GPU + checkpoints + PTB-XL |
 | Band-pass, R-peaks, HR, RR | ✅ really computed | ✅ |
 | Report, probabilities, attention, saliency, precedent | **withheld** | ✅ |
 | Report panel says | "placeholder, not model output" | the generated draft |
@@ -167,10 +190,12 @@ app/
 │   ├── runtime_live.py  adapter onto cardioscribe(), + --self-check
 │   ├── jobs.py          asyncio queue, single-GPU lock, SSE
 │   └── app.py           FastAPI: API + SPA from one process
-├── web/                 index.html · app.js · styles.css  (no dependencies)
+├── web/                 index.html · app.js · styles.css · standalone.js (no dependencies)
+│                        sample/ — a synthetic record so the live page is usable
 ├── gradio_app.py        the Python-native alternative
 └── tools/
     ├── export_runtime.py     notebook → cardioscribe_runtime.py
+    ├── build_pages.py        app/web/ → site/ for GitHub Pages
     └── make_sample_record.py synthetic WFDB pair for testing
 ```
 

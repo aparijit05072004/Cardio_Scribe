@@ -238,3 +238,9 @@ input[type=checkbox] { accent-color: var(--teal); width: 15px; height: 15px; }
 }
 
 #results { scroll-margin-top: 72px; }
+
+.trysample { margin: 11px 0 0; font-size: 13px; color: var(--muted); }
+.linkbtn { background: none; border: none; padding: 0; font: inherit; color: var(--teal);
+           cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.linkbtn:hover { color: #7df0e2; }
+.linkbtn:disabled { opacity: .5; cursor: default; text-decoration: none; }

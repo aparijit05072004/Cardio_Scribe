@@ -1,0 +1,13 @@
+synthetic_sinus_72bpm 12 500 5000
+synthetic_sinus_72bpm.dat 16 1000.0(0)/mV 16 0 1 46492 0 I
+synthetic_sinus_72bpm.dat 16 1000.0(0)/mV 16 0 -1 58519 0 II
+synthetic_sinus_72bpm.dat 16 1000.0(0)/mV 16 0 6 45908 0 III
+synthetic_sinus_72bpm.dat 16 1000.0(0)/mV 16 0 1 13113 0 aVR
+synthetic_sinus_72bpm.dat 16 1000.0(0)/mV 16 0 -5 31838 0 aVL
+synthetic_sinus_72bpm.dat 16 1000.0(0)/mV 16 0 4 49906 0 aVF
+synthetic_sinus_72bpm.dat 16 1000.0(0)/mV 16 0 13 55458 0 V1
+synthetic_sinus_72bpm.dat 16 1000.0(0)/mV 16 0 9 61595 0 V2
+synthetic_sinus_72bpm.dat 16 1000.0(0)/mV 16 0 -7 3088 0 V3
+synthetic_sinus_72bpm.dat 16 1000.0(0)/mV 16 0 -13 9964 0 V4
+synthetic_sinus_72bpm.dat 16 1000.0(0)/mV 16 0 -6 17792 0 V5
+synthetic_sinus_72bpm.dat 16 1000.0(0)/mV 16 0 0 23474 0 V6

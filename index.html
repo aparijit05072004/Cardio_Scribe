@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CardioScribe v2 — ECG Report Studio</title>
+<meta name="description" content="Local ECG-to-report research prototype. Not a medical device.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🫀</text></svg>">
+<link rel="stylesheet" href="static/styles.css">
+</head>
+<body>
+
+<header class="safety" role="alert">
+  <div class="safety__text">
+    <strong>Research prototype — not a medical device.</strong>
+    Clinician-in-the-loop decision support only. No regulatory clearance.
+    <em>It drafts; a cardiologist decides.</em>
+  </div>
+  <div class="safety__chips">
+    <span class="chip chip--mode" id="mode-chip" title="Loading…">checking…</span>
+    <span class="chip">local inference only</span>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <h1 class="title">🫀 CardioScribe&nbsp;v2 <span class="title__sub">ECG&nbsp;→ audited clinical report</span></h1>
+
+  <!-- ─── demo-mode notice ─── -->
+  <section id="demo-note" class="panel panel--demo hidden">
+    <h2 class="panel__h">Demo mode — no trained weights loaded</h2>
+    <p>
+      The signal path is real: band-pass filtering, R-peak detection, heart rate and
+      RR variability are genuinely computed from your upload. Everything that needs the
+      trained model — the report, diagnosis probabilities, attention, saliency and
+      precedent retrieval — is <strong>withheld rather than invented</strong>.
+    </p>
+    <p class="muted">
+      Set <code>CARDIOSCRIBE_RUNTIME_DIR</code> to an exported runtime and restart to
+      run the real pipeline. See <code>app/README.md</code>.
+    </p>
+  </section>
+
+  <!-- ─── upload ─── -->
+  <section class="panel">
+    <h2 class="panel__h">1 · Upload a 12-lead WFDB record</h2>
+
+    <div id="dropzone" class="dropzone" tabindex="0" role="button"
+         aria-label="Drop WFDB files here or press Enter to browse">
+      <div class="dropzone__icon">📈</div>
+      <div class="dropzone__main">Drop the <code>.hea</code> and <code>.dat</code> pair here</div>
+      <div class="dropzone__sub">or click to browse · 10 s · 500 Hz · 12 leads</div>
+      <input type="file" id="file-input" multiple accept=".hea,.dat" hidden>
+    </div>
+
+    <p class="trysample">
+      No ECG to hand? <button type="button" id="btn-sample" class="linkbtn">Load a synthetic
+      sample</button> — a generated 10 s sinus rhythm at 72 bpm, not a real recording.
+    </p>
+
+    <div class="files">
+      <div class="file" id="file-hea"><span class="file__tag">.hea</span><span class="file__name">no header file</span></div>
+      <div class="file" id="file-dat"><span class="file__tag">.dat</span><span class="file__name">no signal file</span></div>
+    </div>
+
+    <div class="options">
+      <label class="field">
+        <span class="field__label">Report template</span>
+        <select id="opt-template"></select>
+      </label>
+      <label class="field">
+        <span class="field__label">Sex <span class="muted">(QTc bound)</span></span>
+        <select id="opt-sex">
+          <option value="">Unspecified — 450 ms</option>
+          <option value="male">Male — 450 ms</option>
+          <option value="female">Female — 460 ms</option>
+        </select>
+      </label>
+      <label class="field field--check">
+        <input type="checkbox" id="opt-calibration" checked>
+        <span>Calibrated probabilities <span class="muted">(ECE 0.082 → 0.022)</span></span>
+      </label>
+      <button id="btn-analyze" class="btn btn--primary" disabled>Analyze ECG</button>
+    </div>
+
+    <div id="upload-error" class="alert alert--error hidden"></div>
+  </section>
+
+  <!-- ─── progress ─── -->
+  <section id="progress" class="panel hidden">
+    <h2 class="panel__h">2 · Processing <span class="muted" id="queue-note"></span></h2>
+    <ol class="steps" id="steps"></ol>
+    <p class="steps__msg" id="step-message"></p>
+  </section>
+
+  <!-- ─── results ─── -->
+  <section id="results" class="hidden">
+
+    <div id="verdict" class="verdict"></div>
+
+    <div class="grid grid--2-1">
+      <!-- waveform -->
+      <div class="panel">
+        <div class="panel__head">
+          <h2 class="panel__h">Signal · <span id="sig-units">standardized mV</span></h2>
+          <div class="controls">
+            <select id="lead-select" aria-label="Lead"></select>
+            <label class="toggle"><input type="checkbox" id="toggle-attention"> attention</label>
+            <label class="toggle"><input type="checkbox" id="toggle-grid" checked> grid</label>
+            <button class="btn btn--ghost" id="btn-zoom-reset">reset zoom</button>
+          </div>
+        </div>
+        <canvas id="ecg" class="ecg" height="380"></canvas>
+        <p class="muted small" id="ecg-hint">Scroll to zoom · drag to pan</p>
+      </div>
+
+      <!-- evidence -->
+      <div class="panel">
+        <h2 class="panel__h">Evidence</h2>
+        <h3 class="sub">Calibrated probabilities</h3>
+        <div id="probs"></div>
+        <h3 class="sub">Deterministic measurements</h3>
+        <div id="measurements" class="metrics"></div>
+        <div id="intervals-wrap" class="hidden">
+          <h3 class="sub">Intervals <span class="muted">(§46, from the waveform)</span></h3>
+          <div id="intervals" class="metrics"></div>
+          <div id="interval-flags" class="flags"></div>
+        </div>
+        <h3 class="sub">Lead importance <span class="muted">(gradient saliency)</span></h3>
+        <div id="saliency"></div>
+      </div>
+    </div>
+
+    <div class="grid grid--1-1">
+      <!-- report + review -->
+      <div class="panel">
+        <h2 class="panel__h">Drafted report</h2>
+        <div id="report-provenance" class="alert alert--warn hidden"></div>
+        <div id="report-fields" class="fields"></div>
+        <h3 class="sub">Raw output</h3>
+        <pre id="report-raw" class="raw"></pre>
+        <div id="repair-wrap" class="hidden">
+          <h3 class="sub">Validator repair log</h3>
+          <ul id="repair-actions" class="repairs"></ul>
+        </div>
+
+        <h3 class="sub">Clinician sign-off</h3>
+        <textarea id="edited-report" rows="7" spellcheck="true"
+                  aria-label="Clinician-edited report"></textarea>
+        <div class="likerts">
+          <label class="field"><span class="field__label">Accuracy</span>
+            <select id="likert-accuracy" class="likert"></select></label>
+          <label class="field"><span class="field__label">Completeness</span>
+            <select id="likert-completeness" class="likert"></select></label>
+          <label class="field"><span class="field__label">Safety</span>
+            <select id="likert-safety" class="likert"></select></label>
+        </div>
+        <input type="text" id="reviewer-notes" placeholder="Reviewer notes (optional)">
+        <div class="review-actions">
+          <button id="btn-save-review" class="btn">Save to human_review_sheet.csv</button>
+          <span id="review-status" class="muted small"></span>
+        </div>
+      </div>
+
+      <!-- precedent + provenance -->
+      <div class="panel">
+        <h2 class="panel__h">Nearest precedent <span class="muted">(InfoNCE space)</span></h2>
+        <div id="precedents"></div>
+
+        <h2 class="panel__h mt">Signal quality</h2>
+        <div id="qc" class="metrics"></div>
+        <div id="qc-warnings"></div>
+
+        <h2 class="panel__h mt">Provenance</h2>
+        <ul id="provenance" class="provenance"></ul>
+      </div>
+    </div>
+  </section>
+
+  <footer class="foot">
+    CardioScribe v2 · PTB-XL 1.0.3 · MIT (code only) ·
+    <a href="docs" id="api-docs-link">API docs</a> ·
+    <span class="muted">every output is drafted for a qualified human to accept, edit or reject</span>
+  </footer>
+</main>
+
+<script>window.CARDIOSCRIBE_STATIC = true;</script>
+<script src="static/standalone.js"></script>
+<script src="static/app.js"></script>
+</body>
+</html>
